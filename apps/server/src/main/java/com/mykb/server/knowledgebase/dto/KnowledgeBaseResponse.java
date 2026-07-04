@@ -11,5 +11,4 @@ public record KnowledgeBaseResponse(
     UUID ownerId,
     String ownerUsername,
     String accessType,
-    String difyDatasetId,
     Instant createdAt) {}

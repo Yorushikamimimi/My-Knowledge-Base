@@ -2,13 +2,12 @@ import { expect, test } from "@playwright/test";
 
 const API_BASE = "http://localhost:8081";
 
-async function mockApp(page) {
+test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
-    const auth = {
-      token: "mock-token",
-      user: { id: "user-1", username: "yorushika" }
-    };
-    window.localStorage.setItem("mykb.auth", JSON.stringify(auth));
+    window.localStorage.setItem(
+      "mykb.auth",
+      JSON.stringify({ token: "mock-token", user: { id: "user-1", username: "yorushika" } })
+    );
   });
 
   await page.route(`${API_BASE}/api/v1/**`, async (route) => {
@@ -19,103 +18,47 @@ async function mockApp(page) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({
-          data: [
-            {
-              id: "kb-1",
-              name: "test",
-              description: "mock kb",
-              accessType: "OWNER",
-              createdAt: "2026-03-20T00:00:00.000Z",
-              updatedAt: "2026-03-23T00:00:00.000Z",
-              documentCount: 2
-            }
-          ]
-        })
+        body: JSON.stringify({ data: [{ id: "kb-1", name: "test", description: "mock kb", accessType: "OWNER" }] })
       });
       return;
     }
-
     if (request.method() === "GET" && pathname === "/api/v1/knowledge-bases/kb-1") {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({
-          data: {
-            id: "kb-1",
-            name: "test",
-            description: "mock kb",
-            accessType: "OWNER"
-          }
-        })
+        body: JSON.stringify({ data: { id: "kb-1", name: "test", description: "mock kb", accessType: "OWNER" } })
       });
       return;
     }
-
     if (request.method() === "GET" && pathname === "/api/v1/knowledge-bases/kb-1/documents") {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
-          data: [
-            {
-              id: "doc-1",
-              originalFilename: "alpha.txt",
-              sizeBytes: 272,
-              contentType: "text/plain",
-              processingStatus: "SUCCEEDED",
-              createdAt: "2026-03-20T00:00:00.000Z"
-            },
-            {
-              id: "doc-2",
-              originalFilename: "beta.txt",
-              sizeBytes: 106,
-              contentType: "text/plain",
-              processingStatus: "SUCCEEDED",
-              createdAt: "2026-03-20T01:00:00.000Z"
-            }
-          ]
+          data: [{ id: "doc-1", originalFilename: "alpha.txt", sizeBytes: 272, contentType: "text/plain", processingStatus: "SUCCEEDED" }]
         })
       });
       return;
     }
-
     if (request.method() === "GET" && pathname === "/api/v1/knowledge-bases/kb-1/ingestion-tasks") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ data: [] })
-      });
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: [] }) });
       return;
     }
 
-    await route.fulfill({
-      status: 404,
-      contentType: "application/json",
-      body: JSON.stringify({ message: `unhandled mock route: ${request.method()} ${pathname}` })
-    });
-  });
-}
-
-test.beforeEach(async ({ page }) => {
-  await mockApp(page);
-});
-
-test("workspace visual baseline stays stable", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 960 });
-  await page.goto("/");
-  await expect(page.getByRole("heading", { name: "test" }).first()).toBeVisible();
-  await expect(page.locator(".workspace-docs")).toHaveScreenshot("workspace-docs.png", {
-    animations: "disabled"
+    await route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ message: `unhandled mock route: ${request.method()} ${pathname}` }) });
   });
 });
 
-test("chat workspace visual baseline stays stable", async ({ page }) => {
+test("desktop workbench has stable product structure", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto("/");
-  await page.getByRole("button", { name: /Open Chat/i }).click();
-  await expect(page.getByRole("heading", { name: "Chat Workspace" })).toBeVisible();
-  await expect(page.locator(".chat-workspace")).toHaveScreenshot("chat-workspace.png", {
-    animations: "disabled"
-  });
+
+  await expect(page.getByText("智能知识库").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "对话" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "文档" })).toBeVisible();
+  await expect(page.getByPlaceholder("向您的文档提问…")).toBeVisible();
+
+  await page.getByRole("button", { name: "文档" }).click();
+  await expect(page.getByRole("heading", { name: /文档/ })).toBeVisible();
+  await expect(page.getByText("alpha.txt")).toBeVisible();
 });

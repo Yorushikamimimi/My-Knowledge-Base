@@ -1,5 +1,20 @@
 ﻿# Quality Report
 
+## Current Status Update (2026-07-04)
+
+The 2026-03 Dify quality gate below is historical.
+The current codebase has removed Dify integration and the Q&A endpoint returns `503` while local RAG is being rebuilt.
+
+Current verified baseline:
+
+- Backend can start locally against PostgreSQL and Flyway migration version 6.
+- Frontend Vite app can start on `3001`.
+- Knowledge base management, document upload, storage, ingestion task status, and OCR wiring remain the active product surface.
+
+Current gap:
+
+- `QA / SSE`, vector retrieval, generated answers, and `Sources` are not implemented in the current runtime.
+
 Date: 2026-03-20
 
 ## Conclusion

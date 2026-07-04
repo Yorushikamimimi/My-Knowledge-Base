@@ -8,7 +8,8 @@
 
 | 模块 | 语言 | 框架 |
 |------|------|------|
-| 后端 | Java 17 | Spring Boot 3.3 + JPA + Flyway |
+| 后端 | Java 21 | Spring Boot 3.3 + JPA + Flyway |
+| RAG 服务 | Python 3.12 | FastAPI + pgvector + Ollama |
 | 前端 | JavaScript (React) | React 18 + Vite 5 + Tailwind CSS |
 | 数据库 | PostgreSQL 16 | Docker (pgvector 镜像) |
 | OCR 服务 | Python 3.12 | FastAPI + RapidOCR（可选） |
@@ -21,6 +22,8 @@
 - Java 21（`java -version`）
 - Node.js 24（`node -v`）
 - Maven（`mvn -v`）
+- Python 3.12（`python3 --version`）
+- Ollama（本地模型服务，后续联调时需要）
 
 ---
 
@@ -52,7 +55,39 @@ cp .env.example .env
 
 默认值可以直接用，不需要改。如果 PostgreSQL 端口或密码不同，修改 `.env` 里的对应项。
 
-### 3. 编译后端
+### 3. 准备 Ollama 模型
+
+```bash
+ollama pull nomic-embed-text
+ollama pull qwen2.5:7b
+```
+
+当前代码默认使用：
+
+- Embedding：`nomic-embed-text`
+- Chat：`qwen2.5:7b`
+
+> 本轮先完成代码落地；Ollama 连通性、真实 embedding 和真实问答启动验收放到后续执行。
+
+### 4. 启动 RAG 服务
+
+```bash
+cd apps/rag
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+
+PYTHONPATH=. \
+RAG_DATABASE_URL=postgresql://mykb:mykb@127.0.0.1:5432/mykb \
+.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8091
+```
+
+健康检查：
+
+```bash
+curl http://localhost:8091/healthz
+```
+
+### 5. 编译后端
 
 ```bash
 cd apps/server
@@ -61,7 +96,7 @@ mvn package -DskipTests -q
 
 编译产物：`apps/server/target/server-0.1.0-SNAPSHOT.jar`
 
-### 4. 启动后端
+### 6. 启动后端
 
 ```bash
 cd /Users/yang/Workspace/SelfProject/CodexProject/My_KnowledgeBase
@@ -71,6 +106,7 @@ env \
   APP_JWT_SECRET=this-is-a-very-long-secret-key-for-local-development-min-32-bytes \
   APP_ALLOWED_ORIGINS=http://localhost:3001 \
   APP_STORAGE_TYPE=LOCAL \
+  RAG_BASE_URL=http://127.0.0.1:8091 \
   OCR_ENABLED=false \
   nohup java -jar apps/server/target/server-0.1.0-SNAPSHOT.jar \
   > .runtime/server.log 2>&1 &
@@ -78,7 +114,7 @@ env \
 
 验证：`curl http://localhost:8081/actuator/health` → 返回 `{"status":"UP"}`
 
-### 5. 启动前端
+### 7. 启动前端
 
 ```bash
 cd apps/web
@@ -88,7 +124,7 @@ npx vite --port 3001
 
 浏览器打开 `http://localhost:3001`
 
-### 6. 创建测试账号
+### 8. 创建测试账号
 
 直接插数据库（DBeaver 连 `127.0.0.1:5432`，库 `mykb`，用户/密码 `mykb`）：
 
@@ -115,8 +151,9 @@ VALUES (
 通常 Docker 容器和项目服务都在后台运行。检查状态：
 
 ```bash
-# 检查四个端口
+# 检查服务端口
 curl -s http://localhost:8081/actuator/health   # 后端
+curl -s http://localhost:8091/healthz            # RAG 服务
 curl -s -o /dev/null -w "%{http_code}" http://localhost:3001  # 前端
 docker exec mykb-pg pg_isready -U mykb           # 数据库
 docker exec redis-local redis-cli -a local_dev_only ping  # Redis
@@ -130,6 +167,10 @@ docker exec redis-local redis-cli -a local_dev_only ping  # Redis
 # 后端 Java 测试（13 个集成测试）
 cd apps/server
 mvn test
+
+# RAG 服务测试
+cd apps/rag
+PYTHONPATH=. .venv/bin/python -m pytest tests -q
 
 # 前端 E2E 测试（Playwright）
 cd apps/web
@@ -146,7 +187,11 @@ pnpm test:e2e
 - ✅ 本地文件存储
 - ✅ OCR 文本提取（需启动 Python OCR 服务）
 - ✅ 文档列表、任务状态追踪
-- ❌ Q&A 问答（Dify 已删除，正在重构中，访问返回 503）
+- ✅ RAG 入库（上传后自动调用 FastAPI RAG 服务切片、Embedding、写入 pgvector）
+- ✅ Q&A 问答 JSON 接口（答案、拒答标记、命中数、耗时、Sources）
+- ✅ 前端问答结果展示（答案、来源片段、score、耗时）
+- ⚠️ `.doc` 旧格式暂不进入 RAG 解析；建议使用 `.docx` / `.pdf` / `.txt` / `.md`
+- ⚠️ 真实 Ollama 连通和端到端服务启动验收待后续执行
 
 ---
 
@@ -155,6 +200,7 @@ pnpm test:e2e
 | 服务 | 端口 | 说明 |
 |------|------|------|
 | 后端 API | 8081 | Spring Boot |
+| RAG 服务 | 8091 | FastAPI |
 | 前端页面 | 3001 | Vite dev server |
 | PostgreSQL | 5432 | Docker `mykb-pg` |
 | Redis | 6379 | Docker `redis-local` |
@@ -182,6 +228,7 @@ My_KnowledgeBase/
 │   │       ├── App.jsx      # 主应用（单文件）
 │   │       ├── main.jsx     # 入口
 │   │       └── styles.css   # 少量全局样式
+│   ├── rag/             # Python RAG 微服务
 │   └── ocr/             # Python OCR 微服务
 ├── docs/                # 项目文档
 │   ├── WORKLOG.md       # 工作日志

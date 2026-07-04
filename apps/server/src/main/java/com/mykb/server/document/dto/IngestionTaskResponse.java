@@ -10,7 +10,6 @@ public record IngestionTaskResponse(
     String status,
     String currentStage,
     String failedStage,
-    String externalBatchId,
     String ocrEngine,
     String failureCode,
     String failureMessage,

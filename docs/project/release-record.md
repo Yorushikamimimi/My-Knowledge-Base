@@ -1,5 +1,15 @@
 ﻿# Release Record
 
+## 2026-07-04
+
+### Documentation Status Correction
+
+- Updated project positioning from the old Dify-based knowledge QA platform to the current AI knowledge-base engineering base.
+- Marked Dify integration as removed from the current runtime path.
+- Documented the active scope: auth, knowledge base management, document upload, storage, ingestion task status, OCR wiring, and frontend workbench.
+- Documented the current gap: local RAG, vector retrieval, generated answers, and `Sources` are not implemented yet.
+- Set the next technical direction to `Ollama + pgvector`.
+
 ## 2026-03-23
 
 ### Completed This Round

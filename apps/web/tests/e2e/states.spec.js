@@ -98,7 +98,7 @@ async function mockApp(page) {
               id: "task-1",
               taskType: "DOCUMENT_INGESTION",
               status: "FAILED",
-              currentStage: "DIFY_UPLOAD",
+              currentStage: "UPLOAD",
               createdAt: "2026-03-20T03:00:00.000Z",
               failureMessage: "Mock upload failure"
             },
@@ -130,6 +130,31 @@ async function mockApp(page) {
       return;
     }
 
+    if (request.method() === "POST" && pathname === "/api/v1/knowledge-bases/kb-1/qa") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: {
+            answer: "alpha 文档说明项目使用 pgvector 做向量检索。",
+            sources: [
+              {
+                documentId: "doc-1",
+                documentName: "alpha.txt",
+                chunkIndex: 0,
+                score: 0.86,
+                preview: "pgvector 做向量检索"
+              }
+            ],
+            hitCount: 1,
+            latencyMs: 18,
+            refused: false
+          }
+        })
+      });
+      return;
+    }
+
     await route.fulfill({
       status: 404,
       contentType: "application/json",
@@ -142,22 +167,21 @@ test.beforeEach(async ({ page }) => {
   await mockApp(page);
 });
 
-test("workspace exposes disabled, error, and retry states", async ({ page }) => {
+test("workspace exposes document status and json qa sources", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { name: "Documents" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Upload" })).toBeDisabled();
+  await page.getByRole("button", { name: "文档" }).click();
+  await expect(page.getByRole("heading", { name: /文档/ })).toBeVisible();
   await expect(page.getByText("failed.txt")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Delete", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "删除", exact: true })).toBeVisible();
   await expect(page.getByText("Mock upload failure")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Start stream" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "重试" })).toBeVisible();
 
-  await page.getByPlaceholder("Ask anything about your documents...").fill("Summarize alpha");
-  await expect(page.getByRole("button", { name: "Start stream" })).toBeEnabled();
+  await page.getByRole("button", { name: "对话" }).click();
+  await page.getByPlaceholder("向您的文档提问…").fill("项目怎么检索？");
+  await page.keyboard.press("Enter");
 
-  await page.getByRole("button", { name: "Hide Docs" }).click();
-  await expect(page.getByRole("button", { name: "Show Docs" })).toBeVisible();
-  await page.getByRole("button", { name: "Show Docs" }).click();
-  await expect(page.getByRole("heading", { name: "Documents" })).toBeVisible();
+  await expect(page.getByText("alpha 文档说明项目使用 pgvector 做向量检索。")).toBeVisible();
+  await expect(page.getByText("命中 1 · 18ms")).toBeVisible();
+  await expect(page.getByText("alpha.txt")).toBeVisible();
 });

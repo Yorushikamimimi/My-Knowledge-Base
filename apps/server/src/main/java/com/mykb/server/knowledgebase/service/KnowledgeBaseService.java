@@ -155,7 +155,6 @@ public class KnowledgeBaseService {
         knowledgeBase.getOwner().getId(),
         knowledgeBase.getOwner().getUsername(),
         accessType,
-        knowledgeBase.getDifyDatasetId(),
         knowledgeBase.getCreatedAt());
   }
 

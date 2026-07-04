@@ -3,13 +3,14 @@
 ## Conclusion
 
 Formal deployment uses `Docker + host Nginx`, meaning containers run the project stack, while the host Nginx exposes only `80/443`.
-The repository-managed stack now includes `server + postgres + redis + minio + ocr`, while `Dify` remains a same-host independent stack.
+The repository-managed stack currently includes `server + postgres + redis + minio + ocr`.
+`Dify` has been removed from the current runtime path; local RAG with `pgvector` and a local model runtime is the next target.
 
 ## Deployment Topology
 
 - Host `Nginx`: public entry, only `80/443`
 - Project stack: `server + postgres + redis + minio + ocr`
-- Dify: same-host independent stack, internal access only
+- Optional future model runtime: Ollama or another OpenAI-compatible local service
 
 ## Suggested Directory Layout
 
@@ -34,7 +35,7 @@ The repository-managed stack now includes `server + postgres + redis + minio + o
 - Redis: `6379`
 - MinIO API: `9000`
 - MinIO Console: `9001`
-- Dify API: `8088`, internal access
+- Ollama API: `11434`, optional future local model runtime
 - OCR Service: `8090`, internal access
 
 ## Environment Variables
@@ -51,10 +52,6 @@ Key variables:
 - `APP_STORAGE_TYPE`
 - `APP_STORAGE_BUCKET`
 - `MINIO_ENDPOINT` / `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY`
-- `DIFY_BASE_URL` / `DIFY_API_KEY`
-- `DIFY_APP_API_KEY`
-- `DIFY_RETRIEVAL_TOP_K` / `DIFY_RETRIEVAL_MIN_SCORE`
-- `DIFY_QA_CONTEXT_MAX_CHARS` / `DIFY_QA_SSE_TIMEOUT`
 - `OCR_BASE_URL`
 - `OCR_ENABLED` / `OCR_TIMEOUT` / `OCR_PDF_CONTENT_TYPE`
 
@@ -70,17 +67,17 @@ The extraction endpoint accepts multipart field `file` and returns JSON:
 - `text`
 - `engine`
 
-## Dify QA App Requirement
+## QA Status
 
-The streaming QA endpoint requires a published Dify completion app API key in `DIFY_APP_API_KEY`.
+The streaming QA endpoint is currently disabled and returns `503`.
+The next implementation should use local RAG:
 
-The Dify app should accept:
-
-- `question`
-- `context`
-- `knowledge_base_name`
-
-The prompt should answer only from `context` and refuse when context is insufficient.
+- parse uploaded documents
+- split text into chunks
+- create embeddings
+- persist vectors in `pgvector`
+- retrieve chunks within the selected knowledge base
+- generate an answer with sources and refusal behavior
 
 ## First Deployment
 
@@ -170,6 +167,6 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml logs -f minio
 
 ## Current Limits
 
-- `Dify` still runs as a same-host independent stack; this repository does not yet compose the official Dify stack directly
+- Q&A is not production-ready in the current codebase; Dify has been removed and local RAG is not implemented yet
 - Real Linux host rehearsal is still pending in this workspace; what is delivered here is the Linux-executable rehearsal package
 - Docker image builds rely on outbound access to package registries during build time

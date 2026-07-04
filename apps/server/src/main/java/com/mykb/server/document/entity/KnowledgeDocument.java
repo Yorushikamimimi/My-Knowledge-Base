@@ -59,9 +59,6 @@ public class KnowledgeDocument extends AuditableEntity {
   @Column(nullable = false, length = 16)
   private ProcessingStatus processingStatus = ProcessingStatus.QUEUED;
 
-  @Column(length = 128)
-  private String difyDocumentId;
-
   public KnowledgeBase getKnowledgeBase() {
     return knowledgeBase;
   }
@@ -132,13 +129,5 @@ public class KnowledgeDocument extends AuditableEntity {
 
   public void setProcessingStatus(ProcessingStatus processingStatus) {
     this.processingStatus = processingStatus;
-  }
-
-  public String getDifyDocumentId() {
-    return difyDocumentId;
-  }
-
-  public void setDifyDocumentId(String difyDocumentId) {
-    this.difyDocumentId = difyDocumentId;
   }
 }

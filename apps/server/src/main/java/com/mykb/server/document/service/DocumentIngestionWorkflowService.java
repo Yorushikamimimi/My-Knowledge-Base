@@ -3,12 +3,6 @@ package com.mykb.server.document.service;
 import com.mykb.server.common.exception.AppException;
 import com.mykb.server.common.storage.ObjectStorageService;
 import com.mykb.server.common.storage.StorageOperationException;
-import com.mykb.server.dify.client.DifyClient;
-import com.mykb.server.dify.client.DifyDatasetResult;
-import com.mykb.server.dify.client.DifyDocumentUploadResult;
-import com.mykb.server.dify.client.DifyIndexingStatusResult;
-import com.mykb.server.dify.client.DifyOperationException;
-import com.mykb.server.dify.config.DifyProperties;
 import com.mykb.server.document.entity.DocumentIngestionTask;
 import com.mykb.server.document.entity.KnowledgeDocument;
 import com.mykb.server.document.repository.DocumentIngestionTaskRepository;
@@ -18,12 +12,16 @@ import com.mykb.server.ocr.client.OcrClient;
 import com.mykb.server.ocr.client.OcrExtractResult;
 import com.mykb.server.ocr.client.OcrOperationException;
 import com.mykb.server.ocr.config.OcrProperties;
+import com.mykb.server.rag.client.RagClient;
+import com.mykb.server.rag.client.RagIngestRequest;
+import com.mykb.server.rag.client.RagOperationException;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.Locale;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -38,74 +36,67 @@ public class DocumentIngestionWorkflowService {
   private final DocumentIngestionTaskRepository ingestionTaskRepository;
   private final KnowledgeBaseRepository knowledgeBaseRepository;
   private final ObjectStorageService objectStorageService;
-  private final DifyClient difyClient;
-  private final DifyProperties difyProperties;
   private final OcrClient ocrClient;
   private final OcrProperties ocrProperties;
+  private final RagClient ragClient;
   private final TransactionTemplate transactionTemplate;
 
   public DocumentIngestionWorkflowService(
       DocumentIngestionTaskRepository ingestionTaskRepository,
       KnowledgeBaseRepository knowledgeBaseRepository,
       ObjectStorageService objectStorageService,
-      DifyClient difyClient,
-      DifyProperties difyProperties,
       OcrClient ocrClient,
       OcrProperties ocrProperties,
+      RagClient ragClient,
       PlatformTransactionManager transactionManager) {
     this.ingestionTaskRepository = ingestionTaskRepository;
     this.knowledgeBaseRepository = knowledgeBaseRepository;
     this.objectStorageService = objectStorageService;
-    this.difyClient = difyClient;
-    this.difyProperties = difyProperties;
     this.ocrClient = ocrClient;
     this.ocrProperties = ocrProperties;
+    this.ragClient = ragClient;
     this.transactionTemplate = new TransactionTemplate(transactionManager);
   }
 
   @Async("documentTaskExecutor")
   public void ingestAsync(UUID taskId) {
-    DocumentIngestionTask.TaskStage failedStage = DocumentIngestionTask.TaskStage.DIFY_UPLOAD;
+    DocumentIngestionTask.TaskStage failedStage = DocumentIngestionTask.TaskStage.UPLOAD;
     try {
       IngestionContext context = loadContext(taskId);
       boolean ocrRequired = requiresOcr(context);
       failedStage =
-          ocrRequired ? DocumentIngestionTask.TaskStage.OCR : DocumentIngestionTask.TaskStage.DIFY_UPLOAD;
+          ocrRequired ? DocumentIngestionTask.TaskStage.OCR : DocumentIngestionTask.TaskStage.UPLOAD;
       markRunning(taskId, failedStage);
 
-      String datasetId = ensureDataset(context.knowledgeBaseId());
       byte[] fileBytes =
           objectStorageService.read(context.storageBucket(), context.storageObjectKey());
 
-      DifyDocumentUploadResult uploadResult;
       String ocrEngine = null;
+      byte[] ragBytes = fileBytes;
+      String ragContentType = context.contentType();
       if (ocrRequired) {
         OcrExtractResult extractResult =
             ocrClient.extractText(context.originalFilename(), context.contentType(), fileBytes);
         ocrEngine = trimToNull(extractResult.engine());
-        failedStage = DocumentIngestionTask.TaskStage.DIFY_UPLOAD;
-        updateStage(taskId, DocumentIngestionTask.TaskStage.DIFY_UPLOAD);
-        uploadResult =
-            difyClient.createTextDocument(
-                datasetId, context.originalFilename(), requireExtractedText(extractResult.text()));
-      } else {
-        failedStage = DocumentIngestionTask.TaskStage.DIFY_UPLOAD;
-        uploadResult =
-            difyClient.uploadDocument(
-                datasetId, context.originalFilename(), context.contentType(), fileBytes);
+        ragBytes = (extractResult.text() == null ? "" : extractResult.text()).getBytes(StandardCharsets.UTF_8);
+        ragContentType = "text/plain";
+        updateStage(taskId, DocumentIngestionTask.TaskStage.UPLOAD);
       }
 
-      saveExternalTracking(taskId, uploadResult.documentId(), uploadResult.batchId(), ocrEngine);
       failedStage = DocumentIngestionTask.TaskStage.INDEXING;
       updateStage(taskId, DocumentIngestionTask.TaskStage.INDEXING);
-      waitForIndexing(taskId, datasetId, uploadResult.batchId(), failedStage);
+      ragClient.ingest(
+          new RagIngestRequest(
+              context.knowledgeBaseId().toString(),
+              context.documentId().toString(),
+              context.originalFilename(),
+              ragContentType,
+              Base64.getEncoder().encodeToString(ragBytes)));
+
+      markSuccess(taskId, ocrEngine);
     } catch (OcrOperationException exception) {
       log.error("OCR ingestion failed. taskId={}", taskId, exception);
       markFailure(taskId, failedStage, "DOCUMENT_OCR_FAILED", exception.getMessage());
-    } catch (DifyOperationException exception) {
-      log.error(
-          "Dify ingestion failed. taskId={}, code={}", taskId, exception.getCode(), exception);
-      markFailure(taskId, failedStage, exception.getCode(), exception.getMessage());
     } catch (StorageOperationException exception) {
       log.error("Stored document read failed. taskId={}", taskId, exception);
       markFailure(
@@ -113,6 +104,9 @@ public class DocumentIngestionWorkflowService {
           failedStage,
           "DOCUMENT_STORAGE_READ_FAILED",
           "Failed to read the stored document");
+    } catch (RagOperationException exception) {
+      log.error("RAG ingestion failed. taskId={}", taskId, exception);
+      markFailure(taskId, failedStage, "DOCUMENT_RAG_FAILED", exception.getMessage());
     } catch (Exception exception) {
       log.error("Unexpected ingestion workflow failure. taskId={}", taskId, exception);
       markFailure(
@@ -121,95 +115,6 @@ public class DocumentIngestionWorkflowService {
           "DOCUMENT_INGESTION_FAILED",
           "Document ingestion workflow failed");
     }
-  }
-  private void waitForIndexing(
-      UUID taskId, String datasetId, String batchId, DocumentIngestionTask.TaskStage failedStage) {
-    for (int attempt = 0; attempt < difyProperties.getMaxPollAttempts(); attempt++) {
-      DifyIndexingStatusResult statusResult = difyClient.getIndexingStatus(datasetId, batchId);
-      String normalizedStatus = normalizeStatus(statusResult.indexingStatus());
-      if ("completed".equals(normalizedStatus)) {
-        markSuccess(taskId);
-        return;
-      }
-      if (isFailureStatus(normalizedStatus)) {
-        markFailure(
-            taskId,
-            failedStage,
-            "DIFY_INDEXING_FAILED",
-            statusResult.errorMessage() == null || statusResult.errorMessage().isBlank()
-                ? "Dify indexing failed"
-                : trimMessage(statusResult.errorMessage()));
-        return;
-      }
-      sleepBeforeNextPoll();
-    }
-
-    markFailure(taskId, failedStage, "DIFY_INDEXING_TIMEOUT", "Dify indexing timed out");
-  }
-  private void sleepBeforeNextPoll() {
-    try {
-      Thread.sleep(difyProperties.getPollInterval().toMillis());
-    } catch (InterruptedException exception) {
-      Thread.currentThread().interrupt();
-      throw new DifyOperationException(
-          "DIFY_INDEXING_INTERRUPTED", "Dify indexing polling was interrupted", exception);
-    }
-  }
-
-  private boolean isFailureStatus(String normalizedStatus) {
-    return "error".equals(normalizedStatus)
-        || "failed".equals(normalizedStatus)
-        || "paused".equals(normalizedStatus)
-        || "stopped".equals(normalizedStatus);
-  }
-
-  private String ensureDataset(UUID knowledgeBaseId) {
-    return transactionTemplate.execute(
-        status -> {
-          KnowledgeBase knowledgeBase =
-              knowledgeBaseRepository
-                  .findById(knowledgeBaseId)
-                  .orElseThrow(
-                      () ->
-                          new AppException(
-                              HttpStatus.NOT_FOUND,
-                              "KNOWLEDGE_BASE_NOT_FOUND",
-                              "Knowledge base does not exist"));
-          if (knowledgeBase.getDifyDatasetId() != null
-              && !knowledgeBase.getDifyDatasetId().isBlank()) {
-            return knowledgeBase.getDifyDatasetId();
-          }
-          DifyDatasetResult datasetResult =
-              difyClient.createDataset(knowledgeBase.getName(), knowledgeBase.getDescription());
-          knowledgeBase.setDifyDatasetId(datasetResult.datasetId());
-          log.info(
-              "Dify dataset created. kbId={}, datasetId={}",
-              knowledgeBase.getId(),
-              datasetResult.datasetId());
-          return datasetResult.datasetId();
-        });
-  }
-
-  private IngestionContext loadContext(UUID taskId) {
-    return transactionTemplate.execute(
-        status -> {
-          DocumentIngestionTask task =
-              ingestionTaskRepository
-                  .findDetailedById(taskId)
-                  .orElseThrow(
-                      () ->
-                          new DifyOperationException(
-                              "TASK_NOT_FOUND", "Document ingestion task does not exist"));
-          KnowledgeDocument document = task.getDocument();
-          return new IngestionContext(
-              taskId,
-              document.getId(),
-              document.getKnowledgeBase().getId(),
-              document.getOriginalFilename(),
-              trimToNull(document.getContentType()),
-              document.getStorageBucket(),
-              document.getStorageObjectKey());
-        });
   }
 
   private boolean requiresOcr(IngestionContext context) {
@@ -223,12 +128,28 @@ public class DocumentIngestionWorkflowService {
     return context.originalFilename().toLowerCase(Locale.ROOT).endsWith(".pdf");
   }
 
-  private String requireExtractedText(String text) {
-    String normalized = trimToNull(text);
-    if (normalized == null) {
-      throw new OcrOperationException("OCR service returned empty text");
-    }
-    return normalized;
+  private IngestionContext loadContext(UUID taskId) {
+    return transactionTemplate.execute(
+        status -> {
+          DocumentIngestionTask task =
+              ingestionTaskRepository
+                  .findDetailedById(taskId)
+                  .orElseThrow(
+                      () ->
+                          new AppException(
+                              HttpStatus.NOT_FOUND,
+                              "TASK_NOT_FOUND",
+                              "Document ingestion task does not exist"));
+          KnowledgeDocument document = task.getDocument();
+          return new IngestionContext(
+              taskId,
+              document.getId(),
+              document.getKnowledgeBase().getId(),
+              document.getOriginalFilename(),
+              trimToNull(document.getContentType()),
+              document.getStorageBucket(),
+              document.getStorageObjectKey());
+        });
   }
 
   private void markRunning(UUID taskId, DocumentIngestionTask.TaskStage stage) {
@@ -254,18 +175,7 @@ public class DocumentIngestionWorkflowService {
         });
   }
 
-  private void saveExternalTracking(
-      UUID taskId, String documentId, String batchId, String ocrEngine) {
-    transactionTemplate.executeWithoutResult(
-        status -> {
-          DocumentIngestionTask task = getTaskOrThrow(taskId);
-          task.setExternalBatchId(batchId);
-          task.setOcrEngine(trimToNull(ocrEngine));
-          task.getDocument().setDifyDocumentId(documentId);
-        });
-  }
-
-  private void markSuccess(UUID taskId) {
+  private void markSuccess(UUID taskId, String ocrEngine) {
     transactionTemplate.executeWithoutResult(
         status -> {
           DocumentIngestionTask task = getTaskOrThrow(taskId);
@@ -275,6 +185,7 @@ public class DocumentIngestionWorkflowService {
           task.setFinishedAt(Instant.now());
           task.setFailureCode(null);
           task.setFailureMessage(null);
+          task.setOcrEngine(trimToNull(ocrEngine));
           task.getDocument().setProcessingStatus(KnowledgeDocument.ProcessingStatus.SUCCEEDED);
           log.info(
               "Document ingestion completed. taskId={}, documentId={}",
@@ -300,29 +211,20 @@ public class DocumentIngestionWorkflowService {
             task.setFailureMessage(trimMessage(failureMessage));
             task.getDocument().setProcessingStatus(KnowledgeDocument.ProcessingStatus.FAILED);
           });
-    } catch (DataAccessException exception) {
+    } catch (Exception exception) {
       log.error("Failed to persist ingestion failure state. taskId={}", taskId, exception);
     }
   }
+
   private DocumentIngestionTask getTaskOrThrow(UUID taskId) {
     return ingestionTaskRepository
         .findDetailedById(taskId)
         .orElseThrow(
             () ->
-                new DifyOperationException(
-                    "TASK_NOT_FOUND", "Document ingestion task does not exist"));
-  }
-
-  private String normalizeStatus(String status) {
-    return status == null ? "" : status.trim().toLowerCase(Locale.ROOT);
-  }
-
-  private String trimMessage(String message) {
-    if (message == null) {
-      return null;
-    }
-    String normalized = message.replaceAll("\\s+", " ").trim();
-    return normalized.length() > 500 ? normalized.substring(0, 500) : normalized;
+                new AppException(
+                    HttpStatus.NOT_FOUND,
+                    "TASK_NOT_FOUND",
+                    "Document ingestion task does not exist"));
   }
 
   private String trimToNull(String value) {
@@ -331,6 +233,14 @@ public class DocumentIngestionWorkflowService {
     }
     String normalized = value.trim();
     return normalized.isEmpty() ? null : normalized;
+  }
+
+  private String trimMessage(String message) {
+    if (message == null) {
+      return null;
+    }
+    String normalized = message.replaceAll("\\s+", " ").trim();
+    return normalized.length() > 500 ? normalized.substring(0, 500) : normalized;
   }
 
   private record IngestionContext(

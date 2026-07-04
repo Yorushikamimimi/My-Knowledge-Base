@@ -1,1422 +1,653 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
+/* ── constants ─────────────────────────────────── */
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8081";
-const AUTH_STORAGE_KEY = "mykb.auth";
-const ACTIVE_TASK_STATUSES = new Set(["PENDING", "RUNNING"]);
+const AUTH_KEY = "mykb.auth";
+const EMPTY_AUTH = { username: "", identity: "", password: "" };
 
-const STATUS_LABELS = {
-  PENDING: "Pending",
-  RUNNING: "Running",
-  SUCCEEDED: "Completed",
-  FAILED: "Failed"
-};
-
-const STAGE_LABELS = {
-  QUEUED: "Queued",
-  OCR: "OCR",
-  DIFY_UPLOAD: "Dify Upload",
-  INDEXING: "Indexing",
-  COMPLETED: "Completed",
-  FAILED: "Failed"
-};
-
-const EMPTY_AUTH_FORM = { username: "", identity: "", password: "" };
-const EMPTY_KB_FORM = { name: "", description: "" };
-
+/* ── helpers ────────────────────────────────────── */
 function readAuth() {
   try {
-    const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
+    const raw = localStorage.getItem(AUTH_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
   }
 }
+function writeAuth(a) {
+  a ? localStorage.setItem(AUTH_KEY, JSON.stringify(a)) : localStorage.removeItem(AUTH_KEY);
+}
+function parseJson(t) {
+  try { return JSON.parse(t); } catch { return null; }
+}
+function errMsg(text, payload) {
+  return payload?.message ?? payload?.code ?? text?.trim() ?? "请求失败";
+}
+function fmtDate(v) {
+  if (!v) return "";
+  return new Date(v).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" });
+}
+function fmtTime(v) {
+  if (!v) return "";
+  return new Date(v).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+function fmtBytes(s) {
+  if (!Number.isFinite(s) || s <= 0) return "0 B";
+  const u = ["B", "KB", "MB", "GB"];
+  let v = s, i = 0;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${u[i]}`;
+}
+function tone(c) {
+  return c === "success" ? "text-green-700 bg-green-50 border-green-200" : c === "danger" ? "text-red-700 bg-red-50 border-red-200" : "text-slate-600 bg-white border-outline-variant/40";
+}
 
-function writeAuth(auth) {
-  if (auth) {
-    window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(auth));
-  } else {
-    window.localStorage.removeItem(AUTH_STORAGE_KEY);
+async function api(path, { token, formData, ...opts } = {}) {
+  const h = new Headers(opts.headers ?? {});
+  if (!formData) h.set("Content-Type", "application/json");
+  if (token) h.set("Authorization", `Bearer ${token}`);
+  const r = await fetch(`${API_BASE_URL}${path}`, { ...opts, headers: h, body: formData ?? opts.body });
+  const txt = await r.text();
+  const p = parseJson(txt);
+  if (!r.ok) throw new Error(errMsg(txt, p));
+  return p;
+}
+
+/* ── Login ──────────────────────────────────────── */
+function LoginView({ status, setStatus }) {
+  const [mode, setMode] = useState("login");
+  const [f, setF] = useState(EMPTY_AUTH);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const path = mode === "register" ? "/api/v1/auth/register" : "/api/v1/auth/login";
+      const body = mode === "register"
+        ? { username: f.username.trim(), email: f.identity.trim(), password: f.password }
+        : { identity: f.identity.trim(), password: f.password };
+      const r = await api(path, { method: "POST", body: JSON.stringify(body) });
+      const next = { token: r.data.accessToken, user: r.data.user };
+      writeAuth(next);
+      setF(EMPTY_AUTH);
+      setStatus({ t: "success", msg: mode === "register" ? "注册成功，请登录" : "登录成功" });
+      window.location.reload();
+    } catch (err) {
+      setStatus({ t: "danger", msg: `${mode === "register" ? "注册" : "登录"}失败: ${err.message}` });
+    } finally {
+      setBusy(false);
+    }
   }
-}
 
-function parseJson(text) {
-  if (!text) return null;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
-}
-
-function getErrorMessage(text, payload) {
-  return payload?.message ?? payload?.code ?? text?.trim() ?? "Request failed";
-}
-
-function formatDate(value) {
-  if (!value) return "n/a";
-  return new Date(value).toLocaleDateString("en-US", {
-    month: "short",
-    day: "2-digit",
-    year: "numeric"
-  });
-}
-
-function formatDateTime(value) {
-  if (!value) return "n/a";
-  return new Date(value).toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
-}
-
-function formatBytes(size) {
-  if (!Number.isFinite(size) || size <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB"];
-  let value = size;
-  let index = 0;
-  while (value >= 1024 && index < units.length - 1) {
-    value /= 1024;
-    index += 1;
-  }
-  return `${value.toFixed(value >= 10 || index === 0 ? 0 : 1)} ${units[index]}`;
-}
-
-function parseEventBlock(block) {
-  let event = "message";
-  const dataLines = [];
-  for (const line of block.split("\n")) {
-    if (line.startsWith("event:")) event = line.slice(6).trim();
-    if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
-  }
-  const rawPayload = dataLines.join("\n");
-  return { event, payload: parseJson(rawPayload) ?? rawPayload };
-}
-
-function makeId() {
-  return globalThis.crypto?.randomUUID?.() ?? `id-${Date.now()}-${Math.random()}`;
-}
-
-function toneClass(tone) {
-  if (tone === "success") return "success";
-  if (tone === "danger") return "danger";
-  return "neutral";
-}
-
-function detectFileType(contentType, filename) {
-  const lower = (filename ?? "").toLowerCase();
-  if (lower.endsWith(".pdf") || contentType?.includes("pdf")) return "pdf";
-  if (lower.endsWith(".xls") || lower.endsWith(".xlsx")) return "sheet";
-  if (lower.endsWith(".doc") || lower.endsWith(".docx")) return "word";
-  return "text";
-}
-
-function fileIcon(type) {
-  if (type === "pdf") return "picture_as_pdf";
-  if (type === "sheet") return "table_chart";
-  return "description";
-}
-
-function EmptyState({ icon, title, description, action }) {
-  return (
-    <div className="empty-state">
-      <div className="empty-state-icon">
-        <span className="material-symbols-outlined">{icon}</span>
-      </div>
-      <div className="empty-state-copy">
-        <h3>{title}</h3>
-        <p>{description}</p>
-      </div>
-      {action ? <div className="empty-state-action">{action}</div> : null}
-    </div>
-  );
-}
-
-function LoadingState({ title = "Loading", lines = 3 }) {
-  return (
-    <div className="loading-state" aria-label={title}>
-      <div className="skeleton skeleton-title" />
-      {Array.from({ length: lines }).map((_, index) => (
-        <div className="skeleton skeleton-line" key={`${title}-${index}`} />
-      ))}
-    </div>
-  );
-}
-async function api(path, { token, formData, ...options } = {}) {
-  const headers = new Headers(options.headers ?? {});
-  if (!formData) headers.set("Content-Type", "application/json");
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers,
-    body: formData ?? options.body
-  });
-
-  const text = await response.text();
-  const payload = parseJson(text);
-  if (!response.ok) throw new Error(getErrorMessage(text, payload));
-  return payload;
-}
-
-function TopNav({ topView, setTopView, setShowCreateModal, onLogout, username }) {
-  const items = [
-    { key: "dashboard", label: "Dashboard" },
-    { key: "workspace", label: "Workspace" },
-    { key: "library", label: "Library" }
-  ];
+  const bannerCls = `text-sm px-4 py-2.5 rounded-xl border max-w-sm mx-auto ${tone(status.t)}`;
 
   return (
-    <header className="top-nav">
-      <div className="nav-left">
-        <span className="brand">Editorial Intelligence</span>
-        <nav className="top-links">
-          {items.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              className={`top-link ${topView === item.key ? "active" : ""}`}
-              onClick={() => setTopView(item.key)}
-            >
-              {item.label}
-            </button>
-          ))}
-        </nav>
-      </div>
-      <div className="nav-right">
-        <button className="button primary mini" onClick={() => setShowCreateModal(true)} type="button">
-          Create KB
-        </button>
-        <button className="icon-btn" type="button" aria-label="Notifications"><span className="material-symbols-outlined">notifications</span></button>
-        <button className="icon-btn" type="button" aria-label="Settings"><span className="material-symbols-outlined">settings</span></button>
-        <button className="avatar-btn" onClick={onLogout} title="Logout" aria-label="Logout" type="button">
-          {String(username ?? "U").slice(0, 1).toUpperCase()}
-        </button>
-      </div>
-    </header>
-  );
-}
-
-function SideNav({ activeTab, setWorkspaceTab, detail, onUploadPick }) {
-  const tabs = [
-    { key: "documents", label: "Documents", icon: "description" },
-    { key: "chat", label: "Chat", icon: "forum" },
-    { key: "insights", label: "Insights", icon: "lightbulb" },
-    { key: "collections", label: "Collections", icon: "folder_special" },
-    { key: "archive", label: "Archive", icon: "archive" }
-  ];
-
-  return (
-    <aside className="side-nav">
-      <div className="project-tile">
-        <div className="project-icon">{(detail?.name ?? "A").slice(0, 1).toUpperCase()}</div>
-        <div>
-          <p className="project-name">{detail?.name ?? "Project Alpha"}</p>
-          <p className="project-meta">Editorial Team</p>
+    <main className="min-h-screen flex flex-col items-center justify-center gap-6 px-4 bg-surface-container-lowest">
+      <div className="text-center max-w-lg">
+        <div className="w-16 h-16 rounded-2xl bg-surface-container-high flex items-center justify-center mx-auto mb-4 shadow-sm border border-outline-variant/30">
+          <span className="material-symbols-outlined text-primary text-3xl filled">auto_awesome</span>
         </div>
+        <h1 className="font-display-lg text-display-lg text-on-surface mb-2">欢迎使用智能知识库</h1>
+        <p className="text-secondary font-body-md text-body-md">AI 驱动的知识管理平台，上传文档，智能检索，流式问答。</p>
       </div>
 
-      <button className="button primary wide side-create" onClick={onUploadPick} type="button">
-        <span className="material-symbols-outlined">add</span>
-        New Document
-      </button>
-
-      <nav className="side-links">
-        {tabs.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            className={`side-link ${activeTab === item.key ? "active" : ""}`}
-            onClick={() => setWorkspaceTab(item.key)}
-          >
-            <span className="material-symbols-outlined">{item.icon}</span>
-            {item.label}
-          </button>
-        ))}
-      </nav>
-
-      <div className="side-footer">
-        <button className="side-link" type="button"><span className="material-symbols-outlined">help_outline</span>Help</button>
-        <button className="side-link" type="button"><span className="material-symbols-outlined">delete</span>Trash</button>
-      </div>
-    </aside>
-  );
-}
-
-function LoginView({ authMode, setAuthMode, authForm, setAuthForm, handleAuthSubmit, busy, status }) {
-  return (
-    <main className="login-page">
-      <div className="login-hero">
-        <div className="login-icon"><span className="material-symbols-outlined">auto_awesome</span></div>
-        <h1>Welcome to Editorial Intelligence</h1>
-        <p>The professional workspace where AI-driven insights meet human curation.</p>
-      </div>
-
-      <section className="login-card">
-        <form className="stack" onSubmit={handleAuthSubmit}>
-          <div className="auth-mode-switch">
-            <button type="button" className={authMode === "login" ? "active" : ""} onClick={() => setAuthMode("login")}>Login</button>
-            <button type="button" className={authMode === "register" ? "active" : ""} onClick={() => setAuthMode("register")}>Register</button>
+      <div className="w-full max-w-sm bg-surface-container-lowest border border-outline-variant/40 rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.04)] p-5">
+        <form className="flex flex-col gap-4" onSubmit={submit}>
+          <div className="grid grid-cols-2 gap-1.5 bg-surface-container p-1 rounded-xl">
+            <button type="button" className={`py-2.5 rounded-lg font-semibold text-sm transition-all ${mode === "login" ? "bg-white text-primary shadow-sm" : "text-secondary"}`} onClick={() => setMode("login")}>登录</button>
+            <button type="button" className={`py-2.5 rounded-lg font-semibold text-sm transition-all ${mode === "register" ? "bg-white text-primary shadow-sm" : "text-secondary"}`} onClick={() => setMode("register")}>注册</button>
           </div>
 
-          {authMode === "register" ? (
-            <label className="field">
-              <span>Username</span>
-              <input
-                minLength={3}
-                maxLength={32}
-                value={authForm.username}
-                onChange={(event) => setAuthForm((current) => ({ ...current, username: event.target.value }))}
-                required
-              />
+          {mode === "register" && (
+            <label className="flex flex-col gap-1"><span className="text-xs text-secondary font-label-md">用户名</span>
+              <input className="border border-outline-variant/60 rounded-xl px-4 py-2.5 text-sm bg-white focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none transition-all" minLength={3} maxLength={32} value={f.username} onChange={e => setF(c => ({ ...c, username: e.target.value }))} required />
             </label>
-          ) : null}
+          )}
 
-          <label className="field">
-            <span>{authMode === "register" ? "Professional Email" : "Identity"}</span>
-            <input
-              type={authMode === "register" ? "email" : "text"}
-              value={authForm.identity}
-              onChange={(event) => setAuthForm((current) => ({ ...current, identity: event.target.value }))}
-              placeholder={authMode === "register" ? "name@company.com" : "email or username"}
-              required
-            />
+          <label className="flex flex-col gap-1"><span className="text-xs text-secondary font-label-md">{mode === "register" ? "邮箱" : "账号"}</span>
+            <input type={mode === "register" ? "email" : "text"} className="border border-outline-variant/60 rounded-xl px-4 py-2.5 text-sm bg-white focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none transition-all" placeholder={mode === "register" ? "请输入邮箱" : "用户名或邮箱"} value={f.identity} onChange={e => setF(c => ({ ...c, identity: e.target.value }))} required />
           </label>
 
-          <label className="field">
-            <span>Password</span>
-            <input
-              type="password"
-              minLength={8}
-              value={authForm.password}
-              onChange={(event) => setAuthForm((current) => ({ ...current, password: event.target.value }))}
-              required
-            />
+          <label className="flex flex-col gap-1"><span className="text-xs text-secondary font-label-md">密码</span>
+            <input type="password" className="border border-outline-variant/60 rounded-xl px-4 py-2.5 text-sm bg-white focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none transition-all" minLength={8} value={f.password} onChange={e => setF(c => ({ ...c, password: e.target.value }))} required />
           </label>
 
-          <button className="button primary wide" type="submit" disabled={busy.auth}>
-            {busy.auth ? "Submitting..." : authMode === "register" ? "Create account" : "Login to Workspace"}
+          <button type="submit" disabled={busy} className="bg-primary hover:bg-primary/90 text-on-primary font-semibold rounded-xl py-3 transition-all disabled:opacity-60 flex items-center justify-center gap-2">
+            {busy ? <><span className="material-symbols-outlined animate-spin text-lg">progress_activity</span> 提交中...</> : (mode === "register" ? "创建账号" : "登录")}
           </button>
         </form>
-      </section>
+      </div>
 
-      <div className={`status-banner login-status ${toneClass(status.tone)}`}>{status.message}</div>
+      {status.msg && <div className={bannerCls}>{status.msg}</div>}
     </main>
   );
 }
 
-function DashboardView({ knowledgeBases, documents, tasks, detail, failedTaskCount, setTopView, setWorkspaceTab }) {
-  return (
-    <section className="page dashboard-page">
-      <div className="page-head split">
-        <div>
-          <h1>Workspace Overview</h1>
-          <p>Manage your organizational intelligence and track document processing in real-time.</p>
-        </div>
-        <button
-          className="button primary big"
-          type="button"
-          onClick={() => {
-            setTopView("workspace");
-            setWorkspaceTab("documents");
-          }}
-        >
-          <span className="material-symbols-outlined">add_circle</span>
-          Open Workspace
-        </button>
-      </div>
-
-      <div className="metric-grid">
-        <article className="metric-card"><p>KB Count</p><strong>{knowledgeBases.length}</strong><small>Active</small></article>
-        <article className="metric-card"><p>Docs</p><strong>{documents.length}</strong><small>Processed</small></article>
-        <article className="metric-card"><p>Tasks</p><strong>{tasks.length}</strong><small>Total</small></article>
-      </div>
-
-      <div className="dashboard-layout">
-        <article className="feature-card">
-          <div className="row">
-            <div>
-              <h2>{detail?.name ?? "No active KB"}</h2>
-              <p>{detail?.description ?? "Create a knowledge base to begin."}</p>
-            </div>
-            <span className="chip owner">ACTIVE AI</span>
-          </div>
-          <div className="feature-meta">
-            <div><span>Documents</span><strong>{documents.length} items</strong></div>
-            <div><span>Failed Tasks</span><strong>{failedTaskCount}</strong></div>
-            <div><span>Access</span><strong>{detail?.accessType ?? "n/a"}</strong></div>
-          </div>
-          <div className="row">
-            <div className="avatar-group"><span>Y</span><span>S</span><span>+1</span></div>
-            <button
-              type="button"
-              className="inline-link"
-              onClick={() => {
-                setTopView("workspace");
-                setWorkspaceTab("documents");
-              }}
-            >
-              Open Workspace <span className="material-symbols-outlined">arrow_forward</span>
-            </button>
-          </div>
-        </article>
-
-        <article className="task-card">
-          <div className="task-card-head"><h3>Recent Tasks</h3><span className="inline-link">VIEW ALL</span></div>
-          <div className="task-feed">
-            {tasks.slice(0, 3).map((task) => (
-              <div className="task-feed-item" key={task.id}>
-                <div className={`dot ${task.status === "FAILED" ? "danger" : "success"}`} />
-                <div>
-                  <strong>{STATUS_LABELS[task.status] ?? task.status}</strong>
-                  <p>{task.taskType} | {formatDateTime(task.createdAt)}</p>
-                </div>
-              </div>
-            ))}
-            {tasks.length === 0 ? (<EmptyState icon="task_alt" title="No recent tasks" description="Ingestion and indexing activity will appear here once documents start processing." />) : null}
-          </div>
-          <div className="didyouknow">
-            <h4>Did you know?</h4>
-            <p>You can cross-reference documents between different Knowledge Bases using global search.</p>
-          </div>
-        </article>
-      </div>
-    </section>
-  );
-}
-
-function InsightsView({ documents, tasks, failedTaskCount }) {
-  const completed = tasks.filter((item) => item.status === "SUCCEEDED").length;
-
-  return (
-    <section className="page insights-page">
-      <div className="page-head split">
-        <div><p className="crumb">Workspace &gt; Project Alpha</p><h1>Insights</h1></div>
-        <div className="insight-actions"><button className="button ghost">Filter</button><button className="button primary">Share Report</button></div>
-      </div>
-
-      <div className="metric-grid four">
-        <article className="metric-card"><p>Knowledge Health</p><strong>{Math.max(70, 100 - failedTaskCount * 6)}%</strong></article>
-        <article className="metric-card"><p>Total Ingestions</p><strong>{tasks.length}</strong></article>
-        <article className="metric-card"><p>Source Quality</p><strong>{failedTaskCount === 0 ? "High" : "Medium"}</strong></article>
-        <article className="metric-card"><p>OCR Ratio</p><strong>{documents.length ? "99.2%" : "0%"}</strong></article>
-      </div>
-
-      <div className="insight-layout">
-        <article className="panel chart-card">
-          <div className="row"><h2>Ingestion Summary</h2><span className="chip muted">Last 7 Days</span></div>
-          <div className="bar-chart">
-            {[40, 58, 47, 73, 39, 82, 64].map((height, index) => (
-              <div className="bar-wrap" key={index}><div className="bar" style={{ height: `${height}%` }} /></div>
-            ))}
-          </div>
-          <div className="chart-labels"><span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span><span>SUN</span></div>
-        </article>
-
-        <div className="insight-side">
-          <article className="panel error-card">
-            <div className="row"><h3>Failed Docs</h3><span className="chip danger">{failedTaskCount} items</span></div>
-            <p>System encountered encoding errors in recently uploaded files.</p>
-            <button className="button ghost wide">Retry Sync</button>
-          </article>
-          <article className="panel topic-card">
-            <h3>Common Topics</h3>
-            <div className="topic-list">
-              {["Editorial Strategy", "AI Ethics", "Content Velocity", "Global Taxonomy", "Workflow Automation", "Style Guides"].map((topic) => (
-                <span className="chip muted" key={topic}>{topic}</span>
-              ))}
-            </div>
-          </article>
-        </div>
-      </div>
-
-      <article className="panel activity-card">
-        <h3>Activity Feed</h3>
-        <div className="activity-list">
-          <div className="activity-item"><strong>New ingestion completed</strong><p>Uploaded 14 technical specifications to the Core Engine collection.</p><small>12m ago</small></div>
-          <div className="activity-item"><strong>Insight extraction finalized</strong><p>Generated {completed} completed ingestion snapshots for analytics review.</p><small>2h ago</small></div>
-          <div className="activity-item"><strong>Collection updated</strong><p>Archived outdated documents and refreshed tags in Project Alpha.</p><small>5h ago</small></div>
-        </div>
-      </article>
-    </section>
-  );
-}
-
-function CollectionsView({ collections, setCollectionDetailOpen, setSelectedKnowledgeBaseId, setShowCreateModal }) {
-  return (
-    <section className="page collections-page">
-      <div className="page-head split">
-        <div><p className="crumb">Workspace / Collections</p><h1>Collections</h1></div>
-        <button className="button primary big" type="button" onClick={() => setShowCreateModal(true)}><span className="material-symbols-outlined">create_new_folder</span>New Collection</button>
-      </div>
-
-      <div className="collection-grid">
-        {collections.slice(0, 4).map((collection) => (
-          <article className="collection-card" key={collection.id}>
-            <div className={`collection-icon ${collection.tone}`}><span className="material-symbols-outlined">folder_special</span></div>
-            <h3>{collection.name}</h3>
-            <p>{collection.docs} Documents</p>
-            <div className="collection-foot">
-              <small>{collection.date}</small>
-              <button
-                className="icon-btn"
-                type="button"
-                onClick={() => {
-                  setSelectedKnowledgeBaseId(collection.id);
-                  setCollectionDetailOpen(true);
-                }}
-              >
-                <span className="material-symbols-outlined">arrow_forward_ios</span>
-              </button>
-            </div>
-          </article>
-        ))}
-      </div>
-
-      <div className="empty-collection-panel">
-        <div className="empty-icon"><span className="material-symbols-outlined">folder_off</span></div>
-        <h3>No Collections here yet</h3>
-        <p>Organize your research and documents by creating your first curated workspace collection.</p>
-        <button className="button ghost" type="button" onClick={() => setShowCreateModal(true)}>Create your first collection</button>
-      </div>
-    </section>
-  );
-}
-
-function CollectionDetailView({
-  detail,
-  selectedKnowledgeBase,
-  documents,
-  busy,
-  setUploadFile,
-  tableUploadRef,
-  handleUploadSubmit,
-  uploadFile,
-  handleDeleteDocument,
-  setCollectionDetailOpen
-}) {
-  const activeName = selectedKnowledgeBase?.name ?? detail?.name ?? "Research Papers";
-
-  return (
-    <section className="page collection-detail-page">
-      <div className="page-head split">
-        <div>
-          <p className="crumb"><button className="inline-link" type="button" onClick={() => setCollectionDetailOpen(false)}>Collections</button> &gt; {activeName}</p>
-          <h1>{activeName} <span className="count">({documents.length})</span></h1>
-          <p>Core academic foundations and peer-reviewed journals for Project Alpha.</p>
-        </div>
-
-        <form className="inline-upload" onSubmit={handleUploadSubmit}>
-          <input
-            type="file"
-            ref={tableUploadRef}
-            accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx"
-            onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)}
-          />
-          <button className="button primary" type="submit" disabled={busy.upload || !uploadFile}>{busy.upload ? "Uploading..." : "Add Document"}</button>
-        </form>
-      </div>
-
-      <section className="table-card">
-        <table>
-          <thead><tr><th>Name</th><th>Size</th><th>Added Date</th><th /></tr></thead>
-          <tbody>
-            {documents.slice(0, 8).map((doc) => {
-              const type = detectFileType(doc.contentType, doc.originalFilename);
-              return (
-                <tr key={doc.id}>
-                  <td>
-                    <div className="table-name">
-                      <span className={`table-icon ${type}`}><span className="material-symbols-outlined">{fileIcon(type)}</span></span>
-                      <div><strong>{doc.originalFilename}</strong><p>{doc.contentType || "Document"}</p></div>
-                    </div>
-                  </td>
-                  <td>{formatBytes(doc.sizeBytes)}</td>
-                  <td>{formatDate(doc.createdAt)}</td>
-                  <td className="table-actions">
-                    <span className={`chip ${doc.processingStatus === "FAILED" ? "danger" : "muted"}`}>{doc.processingStatus}</span>
-                    {doc.processingStatus === "FAILED" ? (
-                      <button
-                        className="icon-btn danger"
-                        type="button"
-                        disabled={busy.deleteDocumentId === doc.id}
-                        onClick={() => void handleDeleteDocument(doc)}
-                      >
-                        <span className="material-symbols-outlined">close</span>
-                      </button>
-                    ) : null}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        {busy.workspace && documents.length === 0 ? <LoadingState title="Loading collection" lines={4} /> : null}{!busy.workspace && documents.length === 0 ? (<EmptyState icon="menu_book" title="Collection is empty" description="Add source files here to keep this collection scoped and searchable." />) : null}
-      </section>
-
-      <section className="detail-bottom">
-        <article className="smart-card"><h3>Smart Summaries Active</h3><p>Our AI is currently processing your latest papers. You will receive a notification once executive insights are ready.</p><span className="chip muted">75% Complete</span></article>
-        <article className="share-card"><h3>Shared with</h3><p>4 Team members have edit access</p><div className="avatar-group"><span>AM</span><span>SK</span><span>JS</span><span>+1</span></div></article>
-      </section>
-    </section>
-  );
-}
-
-function ArchiveView({ documents, failedTaskCount }) {
-  const archiveRows = documents.slice(0, 3).map((doc, index) => ({
-    id: doc.id,
-    name: doc.originalFilename,
-    date: formatDate(doc.createdAt),
-    size: formatBytes(doc.sizeBytes),
-    icon: ["description", "draft", "table_chart"][index % 3]
-  }));
-
-  const fallback = [
-    { id: "fallback-1", name: "Old_Strategy_2022.docx", date: "Oct 12, 2023", size: "4.2 MB", icon: "description" },
-    { id: "fallback-2", name: "Q3_Marketing_Audit_v01.pdf", date: "Nov 02, 2023", size: "1.8 MB", icon: "draft" },
-    { id: "fallback-3", name: "Budget_Projections_Backup.xlsx", date: "Dec 20, 2023", size: "856 KB", icon: "table_chart" }
-  ];
-
-  const list = archiveRows.length ? archiveRows : fallback;
-
-  return (
-    <section className="page archive-page">
-      <div className="page-head split"><div><p className="crumb">Workspace / Project Alpha</p><h1>Archive</h1></div><span className="chip muted">{Math.max(3, failedTaskCount)} Items Archived</span></div>
-      <div className="archive-list">{list.map((item) => <article className="archive-row" key={item.id}><div className="archive-icon"><span className="material-symbols-outlined">{item.icon}</span></div><div><h3>{item.name}</h3><p>Archived {item.date} - {item.size}</p></div></article>)}</div>
-      <article className="archive-info"><div className="archive-info-icon"><span className="material-symbols-outlined">info</span></div><div><h3>About Project Archiving</h3><p>Archived items are removed from your active workspace but remain searchable in the global index. Restoring an item will place it back in its original collection.</p></div></article>
-    </section>
-  );
-}
-
-function LibraryView({ cards, setTopView, setWorkspaceTab, setSelectedKnowledgeBaseId }) {
-  return (
-    <section className="page library-page">
-      <div className="page-head split">
-        <div><h1>Library</h1><p>Your curated knowledge ecosystem. Access projects, internal documentation, and insights.</p></div>
-        <button className="button primary big" type="button">New Asset</button>
-      </div>
-
-      <div className="library-filters">
-        <div className="filter-tabs"><button className="active" type="button">All</button><button type="button">Owned by me</button><button type="button">Shared with me</button><button type="button">Recent</button></div>
-        <div className="library-search"><span className="material-symbols-outlined">search</span><input placeholder="Filter library..." type="text" /></div>
-      </div>
-
-      <div className="library-grid">
-        {cards.map((card) => (
-          <article className="library-card" key={card.id}>
-            <div className={`collection-icon ${card.tone ?? "blue"}`}><span className="material-symbols-outlined">folder_special</span></div>
-            <h3>{card.name}</h3>
-            <p>{card.docs} Documents</p>
-            <div className="row">
-              <small>Updated {card.date}</small>
-              <button
-                type="button"
-                className="inline-link"
-                onClick={() => {
-                  setSelectedKnowledgeBaseId(card.id);
-                  setTopView("workspace");
-                  setWorkspaceTab("documents");
-                }}
-              >
-                Open
-              </button>
-            </div>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function WorkspaceView({
-  detail,
-  knowledgeBases,
-  selectedKnowledgeBaseId,
-  setSelectedKnowledgeBaseId,
-  documents,
-  tasks,
-  busy,
-  uploadFile,
-  setUploadFile,
-  fileInputRef,
-  handleUploadSubmit,
-  handleDeleteDocument,
-  handleRetryTask,
-  sessions,
-  question,
-  setQuestion,
-  handleQaSubmit,
-  stopQa,
-  onOpenChat,
-  docsPanelVisible,
-  setDocsPanelVisible
-}) {
-  return (
-    <section className="page workspace-docs">
-      <div className="page-head split">
-        <div>
-          <h1>{detail?.name ?? "Project Alpha"}</h1>
-          <p>{detail?.description ?? "Choose a knowledge base to start."}</p>
-        </div>
-        <div className="page-head-actions">
-          <select
-            className="select-input"
-            value={selectedKnowledgeBaseId ?? ""}
-            onChange={(event) => setSelectedKnowledgeBaseId(event.target.value)}
-          >
-            {knowledgeBases.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </select>
-          <button className="button ghost small" type="button" onClick={() => setDocsPanelVisible((current) => !current)}>
-            <span className="material-symbols-outlined">{docsPanelVisible ? "left_panel_close" : "left_panel_open"}</span>
-            {docsPanelVisible ? "Hide Docs" : "Show Docs"}
-          </button>
-          <span className={`chip ${detail?.accessType === "OWNER" ? "owner" : "shared"}`}>{detail?.accessType ?? "n/a"}</span>
-        </div>
-      </div>
-
-      <div className={`workspace-layout ${docsPanelVisible ? "" : "docs-hidden"}`}>
-        {docsPanelVisible ? (
-        <div className="left-column">
-          <section className="panel card">
-            <div className="card-head"><h2>Documents</h2><span className="chip muted">{documents.length} docs</span></div>
-            <form className="upload-form" onSubmit={handleUploadSubmit}>
-              <input
-                type="file"
-                ref={fileInputRef}
-                accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx"
-                onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)}
-              />
-              <button className="button primary wide" type="submit" disabled={!detail || detail.accessType !== "OWNER" || busy.upload || !uploadFile}>{busy.upload ? "Uploading..." : "Upload"}</button>
-            </form>
-            {detail?.accessType !== "OWNER" ? <p className="hint">Shared viewer can ask questions only, upload is disabled.</p> : null}
-
-            <div className="doc-list">
-              {documents.slice(0, 6).map((doc) => {
-                const type = detectFileType(doc.contentType, doc.originalFilename);
-                return (
-                  <article className="doc-item" key={doc.id}>
-                    <div className={`doc-icon ${type}`}><span className="material-symbols-outlined">{fileIcon(type)}</span></div>
-                    <div className="doc-main"><strong>{doc.originalFilename}</strong><p>{formatBytes(doc.sizeBytes)}</p></div>
-                    <div className="doc-actions">
-                      <span className={`chip ${doc.processingStatus === "FAILED" ? "danger" : "muted"}`}>{doc.processingStatus}</span>
-                      {doc.processingStatus === "FAILED" ? <button className="button ghost small" type="button" onClick={() => void handleDeleteDocument(doc)} disabled={busy.deleteDocumentId === doc.id}>Delete</button> : null}
-                    </div>
-                  </article>
-                );
-              })}
-              {busy.workspace && documents.length === 0 ? <LoadingState title="Loading documents" lines={4} /> : null}{!busy.workspace && documents.length === 0 ? (<EmptyState icon="upload_file" title="No documents yet" description="Upload files to start indexing content and unlock question answering." action={detail?.accessType === "OWNER" ? <span className="chip owner">Owner can upload</span> : null} />) : null}
-            </div>
-          </section>
-
-          <section className="panel card">
-            <div className="card-head"><h2>Task Status</h2><span className="chip muted">{tasks.length}</span></div>
-            <div className="task-list">
-              {tasks.slice(0, 5).map((task) => (
-                <article className="task-row" key={task.id}>
-                  <div>
-                    <strong>{STATUS_LABELS[task.status] ?? task.status}</strong>
-                    <p>{task.taskType} | {STAGE_LABELS[task.currentStage] ?? task.currentStage ?? "n/a"}</p>
-                    <small>{formatDateTime(task.createdAt)}</small>
-                    {task.failureMessage ? <div className="inline-error">{task.failureMessage}</div> : null}
-                  </div>
-                  {task.status === "FAILED" ? <button className="button ghost small" type="button" onClick={() => void handleRetryTask(task)} disabled={busy.retryTaskId === task.id}>Retry</button> : <span className="chip muted">{task.status}</span>}
-                </article>
-              ))}
-              {busy.workspace && tasks.length === 0 ? <LoadingState title="Loading tasks" lines={3} /> : null}{!busy.workspace && tasks.length === 0 ? (<EmptyState icon="schedule" title="No ingestion tasks" description="Task history will appear here after uploads, OCR, and indexing jobs run." />) : null}
-            </div>
-          </section>
-        </div>
-
-        ) : null}
-
-        <section className={`panel card chat-panel ${docsPanelVisible ? "" : "expanded"}`}>
-          <div className="chat-head">
-            <div>
-              <h2>Ask the Knowledge Base</h2>
-              <p>Connected to {documents.length} documents</p>
-            </div>
-            <button className="button ghost small" type="button" onClick={onOpenChat}>
-              <span className="material-symbols-outlined">open_in_full</span>
-              Open Chat
-            </button>
-          </div>
-          <div className="chat-feed">
-            {sessions.map((session) => (
-              <article className="qa-item" key={session.id}>
-                <div className="qa-user"><div className="bubble user-bubble">{session.question}</div><small>{formatDateTime(session.createdAt)}</small></div>
-                <div className="qa-assistant">
-                  <div className="bubble ai-bubble">{session.answer || "Generating answer..."}</div>
-                  {session.sources.length ? (
-                    <div className="source-pack">
-                      <h4>Sources</h4>
-                      {session.sources.map((source, index) => (
-                        <div className="source-row" key={`${session.id}-${source.segmentId ?? index}`}>
-                          <strong>{source.documentName || "untitled"}</strong>
-                          <span className="chip muted">score {source.score?.toFixed?.(2) ?? "n/a"}</span>
-                          <p>{source.content}</p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                  {session.error ? <div className="inline-error">{session.error}</div> : null}
-                </div>
-              </article>
-            ))}
-            {sessions.length === 0 ? (<EmptyState icon="forum" title="Start a focused conversation" description="Ask about uploaded documents and the assistant will answer with citations and streamed responses." />) : null}
-          </div>
-
-          <form className="chat-input" onSubmit={handleQaSubmit}>
-            <textarea rows={3} value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask anything about your documents..." />
-            <div className="chat-actions">
-              <button className="button ghost" type="button" onClick={stopQa}>Stop</button>
-              <button className="button primary" type="submit" disabled={busy.qa || !question.trim()}>{busy.qa ? "Streaming..." : "Start stream"}</button>
-            </div>
-          </form>
-        </section>
-      </div>
-    </section>
-  );
-}
-
-export default function App() {
-  const [authMode, setAuthMode] = useState("login");
-  const [authForm, setAuthForm] = useState(EMPTY_AUTH_FORM);
-  const [auth, setAuth] = useState(() => readAuth());
-
-  const [knowledgeBaseForm, setKnowledgeBaseForm] = useState(EMPTY_KB_FORM);
-  const [knowledgeBases, setKnowledgeBases] = useState([]);
-  const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] = useState(null);
+/* ── Main canvas ────────────────────────────────── */
+function CanvasView({ auth, onLogout, status, setStatus }) {
+  const [kbs, setKbs] = useState([]);
+  const [kbId, setKbId] = useState(null);
   const [detail, setDetail] = useState(null);
-  const [documents, setDocuments] = useState([]);
+  const [docs, setDocs] = useState([]);
   const [tasks, setTasks] = useState([]);
 
-  const [uploadFile, setUploadFile] = useState(null);
-  const [question, setQuestion] = useState("");
   const [sessions, setSessions] = useState([]);
-
+  const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState({});
-  const [status, setStatus] = useState({ tone: "neutral", message: "Ready." });
-
-  const [topView, setTopView] = useState("workspace");
-  const [workspaceTab, setWorkspaceTab] = useState("documents");
-  const [docsPanelVisible, setDocsPanelVisible] = useState(true);
-  const [collectionDetailOpen, setCollectionDetailOpen] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showDocsPanel, setShowDocsPanel] = useState(false);
+  const [kbForm, setKbForm] = useState({ name: "", description: "" });
+  const [uploadFile, setUploadFile] = useState(null);
 
-  const fileInputRef = useRef(null);
-  const tableUploadRef = useRef(null);
-  const qaAbortRef = useRef(null);
+  const fileRef = useRef(null);
+  const docFileRef = useRef(null);
+  const dropFileRef = useRef(null);
+  const qaRef = useRef(null);
+  const chatEndRef = useRef(null);
+  const inputRef = useRef(null);
 
-  const selectedKnowledgeBase = useMemo(
-    () => knowledgeBases.find((item) => item.id === selectedKnowledgeBaseId) ?? null,
-    [knowledgeBases, selectedKnowledgeBaseId]
-  );
+  const activeCnt = tasks.filter(t => t.status === "PENDING" || t.status === "RUNNING").length;
 
-  const activeTaskCount = tasks.filter((task) => ACTIVE_TASK_STATUSES.has(task.status)).length;
-  const failedTaskCount = tasks.filter((task) => task.status === "FAILED").length;
-
-  const collections = useMemo(() => {
-    if (!knowledgeBases.length) {
-      return [{ id: "placeholder", name: "Research Papers", docs: 0, date: "No data", tone: "blue" }];
-    }
-    return knowledgeBases.map((item, index) => ({
-      id: item.id,
-      name: item.name,
-      docs: item.documentCount ?? (selectedKnowledgeBaseId === item.id ? documents.length : 0),
-      date: formatDate(item.updatedAt ?? item.createdAt),
-      tone: ["blue", "purple", "green", "orange"][index % 4]
-    }));
-  }, [documents.length, knowledgeBases, selectedKnowledgeBaseId]);
-
+  /* data loading */
   useEffect(() => {
-    if (!auth?.token) {
-      setKnowledgeBases([]);
-      setSelectedKnowledgeBaseId(null);
-      setDetail(null);
-      setDocuments([]);
-      setTasks([]);
-      setSessions([]);
-      return;
-    }
-
-    let cancelled = false;
-    void (async () => {
-      setBusy((current) => ({ ...current, list: true }));
+    if (!auth?.token) return;
+    let c = false;
+    (async () => {
+      setBusy(b => ({ ...b, list: true }));
       try {
-        const listResult = await api("/api/v1/knowledge-bases", { token: auth.token });
-        const list = listResult?.data ?? [];
-        if (cancelled) return;
-        setKnowledgeBases(list);
-        setSelectedKnowledgeBaseId((current) => current && list.some((item) => item.id === current) ? current : list[0]?.id ?? null);
-      } catch (error) {
-        if (!cancelled) setStatus({ tone: "danger", message: `Load KB failed: ${error.message}` });
-      } finally {
-        if (!cancelled) setBusy((current) => ({ ...current, list: false }));
-      }
+        const r = await api("/api/v1/knowledge-bases", { token: auth.token });
+        const list = r?.data ?? [];
+        if (c) return;
+        setKbs(list);
+        setKbId(cur => cur && list.some(x => x.id === cur) ? cur : list[0]?.id ?? null);
+      } catch (e) { if (!c) setStatus({ t: "danger", msg: `加载知识库失败: ${e.message}` }); }
+      finally { if (!c) setBusy(b => ({ ...b, list: false })); }
     })();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { c = true; };
   }, [auth?.token]);
 
   useEffect(() => {
-    if (!auth?.token || !selectedKnowledgeBaseId) {
-      setDetail(null);
-      setDocuments([]);
-      setTasks([]);
-      return;
-    }
-
-    let cancelled = false;
-    void (async () => {
-      setBusy((current) => ({ ...current, workspace: true }));
+    if (!auth?.token || !kbId) { setDetail(null); setDocs([]); setTasks([]); return; }
+    let c = false;
+    (async () => {
+      setBusy(b => ({ ...b, ws: true }));
       try {
-        const [detailResult, documentsResult, tasksResult] = await Promise.all([
-          api(`/api/v1/knowledge-bases/${selectedKnowledgeBaseId}`, { token: auth.token }),
-          api(`/api/v1/knowledge-bases/${selectedKnowledgeBaseId}/documents`, { token: auth.token }),
-          api(`/api/v1/knowledge-bases/${selectedKnowledgeBaseId}/ingestion-tasks`, { token: auth.token })
+        const [dr, docR, taskR] = await Promise.all([
+          api(`/api/v1/knowledge-bases/${kbId}`, { token: auth.token }),
+          api(`/api/v1/knowledge-bases/${kbId}/documents`, { token: auth.token }),
+          api(`/api/v1/knowledge-bases/${kbId}/ingestion-tasks`, { token: auth.token })
         ]);
-        if (cancelled) return;
-        setDetail(detailResult?.data ?? null);
-        setDocuments(documentsResult?.data ?? []);
-        setTasks(tasksResult?.data ?? []);
-      } catch (error) {
-        if (!cancelled) setStatus({ tone: "danger", message: `Load workspace failed: ${error.message}` });
-      } finally {
-        if (!cancelled) setBusy((current) => ({ ...current, workspace: false }));
-      }
+        if (c) return;
+        setDetail(dr?.data ?? null);
+        setDocs(docR?.data ?? []);
+        setTasks(taskR?.data ?? []);
+      } catch (e) { if (!c) setStatus({ t: "danger", msg: `加载失败: ${e.message}` }); }
+      finally { if (!c) setBusy(b => ({ ...b, ws: false })); }
     })();
+    return () => { c = true; };
+  }, [auth?.token, kbId]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [auth?.token, selectedKnowledgeBaseId]);
-
+  /* poll active tasks */
   useEffect(() => {
-    if (!auth?.token || !selectedKnowledgeBaseId || activeTaskCount === 0) return undefined;
-    const timer = window.setInterval(async () => {
+    if (!auth?.token || !kbId || activeCnt === 0) return;
+    const t = setInterval(async () => {
       try {
-        const [detailResult, documentsResult, tasksResult] = await Promise.all([
-          api(`/api/v1/knowledge-bases/${selectedKnowledgeBaseId}`, { token: auth.token }),
-          api(`/api/v1/knowledge-bases/${selectedKnowledgeBaseId}/documents`, { token: auth.token }),
-          api(`/api/v1/knowledge-bases/${selectedKnowledgeBaseId}/ingestion-tasks`, { token: auth.token })
+        const [dr, docR, taskR] = await Promise.all([
+          api(`/api/v1/knowledge-bases/${kbId}`, { token: auth.token }),
+          api(`/api/v1/knowledge-bases/${kbId}/documents`, { token: auth.token }),
+          api(`/api/v1/knowledge-bases/${kbId}/ingestion-tasks`, { token: auth.token })
         ]);
-        setDetail(detailResult?.data ?? null);
-        setDocuments(documentsResult?.data ?? []);
-        setTasks(tasksResult?.data ?? []);
-      } catch {
-        // keep polling silent
-      }
+        setDetail(dr?.data ?? null);
+        setDocs(docR?.data ?? []);
+        setTasks(taskR?.data ?? []);
+      } catch { /* silent */ }
     }, 2500);
-    return () => window.clearInterval(timer);
-  }, [activeTaskCount, auth?.token, selectedKnowledgeBaseId]);
+    return () => clearInterval(t);
+  }, [activeCnt, auth?.token, kbId]);
 
-  useEffect(() => () => qaAbortRef.current?.abort(), []);
+  useEffect(() => { chatEndRef.current?.scrollIntoView?.({ behavior: "smooth" }); }, [sessions]);
+  useEffect(() => () => qaRef.current?.abort(), []);
 
-  async function refreshWorkspaceNow() {
-    if (!auth?.token || !selectedKnowledgeBaseId) return;
-    const [detailResult, documentsResult, tasksResult] = await Promise.all([
-      api(`/api/v1/knowledge-bases/${selectedKnowledgeBaseId}`, { token: auth.token }),
-      api(`/api/v1/knowledge-bases/${selectedKnowledgeBaseId}/documents`, { token: auth.token }),
-      api(`/api/v1/knowledge-bases/${selectedKnowledgeBaseId}/ingestion-tasks`, { token: auth.token })
-    ]);
-    setDetail(detailResult?.data ?? null);
-    setDocuments(documentsResult?.data ?? []);
-    setTasks(tasksResult?.data ?? []);
-  }
-
-  async function refreshKnowledgeBases(forceSelectId) {
+  /* actions */
+  async function refreshKbs(forceId) {
     if (!auth?.token) return;
-    const listResult = await api("/api/v1/knowledge-bases", { token: auth.token });
-    const list = listResult?.data ?? [];
-    setKnowledgeBases(list);
-    setSelectedKnowledgeBaseId((current) => {
-      if (forceSelectId && list.some((item) => item.id === forceSelectId)) return forceSelectId;
-      if (current && list.some((item) => item.id === current)) return current;
-      return list[0]?.id ?? null;
-    });
+    const r = await api("/api/v1/knowledge-bases", { token: auth.token });
+    const list = r?.data ?? [];
+    setKbs(list);
+    setKbId(cur => forceId && list.some(x => x.id === forceId) ? forceId : (cur && list.some(x => x.id === cur) ? cur : list[0]?.id ?? null));
   }
 
-  async function handleAuthSubmit(event) {
-    event.preventDefault();
-    setBusy((current) => ({ ...current, auth: true }));
-    try {
-      const path = authMode === "register" ? "/api/v1/auth/register" : "/api/v1/auth/login";
-      const payload = authMode === "register"
-        ? { username: authForm.username.trim(), email: authForm.identity.trim(), password: authForm.password }
-        : { identity: authForm.identity.trim(), password: authForm.password };
-      const result = await api(path, { method: "POST", body: JSON.stringify(payload) });
-      const nextAuth = { token: result.data.accessToken, user: result.data.user };
-      writeAuth(nextAuth);
-      setAuth(nextAuth);
-      setAuthForm(EMPTY_AUTH_FORM);
-      setStatus({ tone: "success", message: authMode === "register" ? "Registration successful, please login." : "Login successful." });
-    } catch (error) {
-      setStatus({ tone: "danger", message: `${authMode === "register" ? "Registration" : "Login"} failed: ${error.message}` });
-    } finally {
-      setBusy((current) => ({ ...current, auth: false }));
-    }
-  }
-
-  function handleLogout() {
-    qaAbortRef.current?.abort();
-    qaAbortRef.current = null;
-    writeAuth(null);
-    setAuth(null);
-    setSessions([]);
-    setUploadFile(null);
-    setQuestion("");
-    setTopView("workspace");
-    setWorkspaceTab("documents");
-    setStatus({ tone: "neutral", message: "Logged out." });
-  }
-
-  async function handleKnowledgeBaseCreate(event) {
-    event.preventDefault();
+  async function createKB(e) {
+    e.preventDefault();
     if (!auth?.token) return;
-    setBusy((current) => ({ ...current, create: true }));
+    setBusy(b => ({ ...b, create: true }));
     try {
-      const result = await api("/api/v1/knowledge-bases", {
-        method: "POST",
-        token: auth.token,
-        body: JSON.stringify({
-          name: knowledgeBaseForm.name.trim(),
-          description: knowledgeBaseForm.description.trim()
-        })
-      });
-      setKnowledgeBaseForm(EMPTY_KB_FORM);
-      await refreshKnowledgeBases(result.data.id);
+      const r = await api("/api/v1/knowledge-bases", { method: "POST", token: auth.token, body: JSON.stringify({ name: kbForm.name.trim(), description: kbForm.description.trim() }) });
+      setKbForm({ name: "", description: "" });
+      await refreshKbs(r.data.id);
       setShowCreateModal(false);
-      setStatus({ tone: "success", message: `KB "${result.data.name}" created` });
-    } catch (error) {
-      setStatus({ tone: "danger", message: `Create KB failed: ${error.message}` });
-    } finally {
-      setBusy((current) => ({ ...current, create: false }));
-    }
+      setStatus({ t: "success", msg: `知识库“${r.data.name}”已创建` });
+    } catch (e) { setStatus({ t: "danger", msg: `创建失败: ${e.message}` }); }
+    finally { setBusy(b => ({ ...b, create: false })); }
   }
 
-  async function handleUploadSubmit(event) {
-    event.preventDefault();
-    if (!auth?.token || !selectedKnowledgeBaseId || !uploadFile) return;
-    setBusy((current) => ({ ...current, upload: true }));
-    const formData = new FormData();
-    formData.append("file", uploadFile);
+  async function doUpload(e, file) {
+    e?.preventDefault();
+    const f = file || uploadFile;
+    if (!auth?.token || !kbId || !f) return;
+    setBusy(b => ({ ...b, upload: true }));
+    const fd = new FormData(); fd.append("file", f);
     try {
-      const result = await api(`/api/v1/knowledge-bases/${selectedKnowledgeBaseId}/documents`, {
-        method: "POST",
-        token: auth.token,
-        formData
-      });
-      setUploadFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      if (tableUploadRef.current) tableUploadRef.current.value = "";
-      await refreshWorkspaceNow();
-      setStatus({ tone: "success", message: `Uploaded ${result.data.document.originalFilename}` });
-    } catch (error) {
-      setStatus({ tone: "danger", message: `Upload failed: ${error.message}` });
-    } finally {
-      setBusy((current) => ({ ...current, upload: false }));
-    }
+      const r = await api(`/api/v1/knowledge-bases/${kbId}/documents`, { method: "POST", token: auth.token, formData: fd });
+      setUploadFile(null); if (fileRef.current) fileRef.current.value = ""; if (docFileRef.current) docFileRef.current.value = ""; if (dropFileRef.current) dropFileRef.current.value = "";
+      await Promise.all([
+        api(`/api/v1/knowledge-bases/${kbId}`, { token: auth.token }).then(r => setDetail(r?.data ?? null)),
+        api(`/api/v1/knowledge-bases/${kbId}/documents`, { token: auth.token }).then(r => setDocs(r?.data ?? [])),
+        api(`/api/v1/knowledge-bases/${kbId}/ingestion-tasks`, { token: auth.token }).then(r => setTasks(r?.data ?? []))
+      ]);
+      setStatus({ t: "success", msg: `已上传 ${r.data.document.originalFilename}` });
+    } catch (e) { setStatus({ t: "danger", msg: `上传失败: ${e.message}` }); }
+    finally { setBusy(b => ({ ...b, upload: false })); }
   }
 
-  async function handleDeleteDocument(document) {
-    if (!auth?.token || !selectedKnowledgeBaseId) return;
-    setBusy((current) => ({ ...current, deleteDocumentId: document.id }));
+  async function doDelete(doc) {
+    if (!auth?.token || !kbId) return;
+    setBusy(b => ({ ...b, delId: doc.id }));
     try {
-      await api(`/api/v1/knowledge-bases/${selectedKnowledgeBaseId}/documents/${document.id}`, {
-        method: "DELETE",
-        token: auth.token
-      });
-      await refreshWorkspaceNow();
-      setStatus({ tone: "success", message: `Deleted ${document.originalFilename}` });
-    } catch (error) {
-      setStatus({ tone: "danger", message: `Delete failed: ${error.message}` });
-    } finally {
-      setBusy((current) => ({ ...current, deleteDocumentId: null }));
-    }
+      await api(`/api/v1/knowledge-bases/${kbId}/documents/${doc.id}`, { method: "DELETE", token: auth.token });
+      const r = await api(`/api/v1/knowledge-bases/${kbId}/documents`, { token: auth.token });
+      setDocs(r?.data ?? []);
+      setStatus({ t: "success", msg: `已删除 ${doc.originalFilename}` });
+    } catch (e) { setStatus({ t: "danger", msg: `删除失败: ${e.message}` }); }
+    finally { setBusy(b => ({ ...b, delId: null })); }
   }
 
-  async function handleRetryTask(task) {
-    if (!auth?.token || !selectedKnowledgeBaseId) return;
-    setBusy((current) => ({ ...current, retryTaskId: task.id }));
+  async function doRetry(task) {
+    if (!auth?.token || !kbId) return;
+    setBusy(b => ({ ...b, retryId: task.id }));
     try {
-      await api(`/api/v1/knowledge-bases/${selectedKnowledgeBaseId}/ingestion-tasks/${task.id}/retry`, {
-        method: "POST",
-        token: auth.token
-      });
-      await refreshWorkspaceNow();
-      setStatus({ tone: "success", message: `Retry requested: ${task.id}` });
-    } catch (error) {
-      setStatus({ tone: "danger", message: `Retry failed: ${error.message}` });
-    } finally {
-      setBusy((current) => ({ ...current, retryTaskId: null }));
-    }
+      await api(`/api/v1/knowledge-bases/${kbId}/ingestion-tasks/${task.id}/retry`, { method: "POST", token: auth.token });
+      const r = await api(`/api/v1/knowledge-bases/${kbId}/ingestion-tasks`, { token: auth.token });
+      setTasks(r?.data ?? []);
+      setStatus({ t: "success", msg: "已提交重试" });
+    } catch (e) { setStatus({ t: "danger", msg: `重试失败: ${e.message}` }); }
+    finally { setBusy(b => ({ ...b, retryId: null })); }
   }
 
-  function applyQaEvent(sessionId, nextEvent) {
-    setSessions((current) =>
-      current.map((session) => {
-        if (session.id !== sessionId) return session;
-        if (nextEvent.event === "sources") {
-          return { ...session, sources: Array.isArray(nextEvent.payload) ? nextEvent.payload : [] };
-        }
-        if (nextEvent.event === "message") {
-          return { ...session, answer: `${session.answer}${nextEvent.payload?.delta ?? ""}` };
-        }
-        if (nextEvent.event === "done") {
-          return {
-            ...session,
-            answer: nextEvent.payload?.answer ?? session.answer,
-            refusal: Boolean(nextEvent.payload?.refusal),
-            status: "done"
-          };
-        }
-        if (nextEvent.event === "error") {
-          return {
-            ...session,
-            status: "error",
-            error: nextEvent.payload?.message ?? "Stream interrupted"
-          };
-        }
-        return session;
-      })
-    );
-  }
-
-  async function handleQaSubmit(event) {
-    event.preventDefault();
-    if (!auth?.token || !selectedKnowledgeBaseId || !question.trim()) return;
-
-    qaAbortRef.current?.abort();
-    const controller = new AbortController();
-    qaAbortRef.current = controller;
-
-    const prompt = question.trim();
-    const sessionId = makeId();
+  async function doQA(e) {
+    e?.preventDefault();
+    const q = question.trim();
+    if (!auth?.token || !kbId || !q) return;
+    qaRef.current?.abort();
+    const ctrl = new AbortController(); qaRef.current = ctrl;
+    const sid = crypto.randomUUID?.() ?? `id-${Date.now()}`;
     setQuestion("");
-    setBusy((current) => ({ ...current, qa: true }));
+    setBusy(b => ({ ...b, qa: true }));
 
-    setSessions((current) => [
-      {
-        id: sessionId,
-        question: prompt,
-        answer: "",
-        sources: [],
-        refusal: false,
-        status: "streaming",
-        error: null,
-        createdAt: new Date().toISOString()
-      },
-      ...current
-    ]);
+    setSessions(cur => [{ id: sid, question: q, answer: "", sources: [], hitCount: 0, latencyMs: 0, refused: false, status: "loading", error: null, createdAt: new Date().toISOString() }, ...cur]);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/knowledge-bases/${selectedKnowledgeBaseId}/qa/stream`, {
+      const r = await fetch(`${API_BASE_URL}/api/v1/knowledge-bases/${kbId}/qa`, {
         method: "POST",
-        headers: {
-          Accept: "text/event-stream",
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${auth.token}`
-        },
-        body: JSON.stringify({ query: prompt }),
-        signal: controller.signal
+        headers: { Accept: "application/json", "Content-Type": "application/json", Authorization: `Bearer ${auth.token}` },
+        body: JSON.stringify({ query: q }),
+        signal: ctrl.signal
       });
-
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(getErrorMessage(text, parseJson(text)));
-      }
-
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      while (reader) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true }).replaceAll("\r\n", "\n");
-        let splitIndex = buffer.indexOf("\n\n");
-        while (splitIndex >= 0) {
-          const block = buffer.slice(0, splitIndex).trim();
-          buffer = buffer.slice(splitIndex + 2);
-          if (block) applyQaEvent(sessionId, parseEventBlock(block));
-          splitIndex = buffer.indexOf("\n\n");
-        }
-      }
-
-      if (buffer.trim()) applyQaEvent(sessionId, parseEventBlock(buffer.trim()));
-      setStatus({ tone: "success", message: "QA completed" });
-    } catch (error) {
-      if (error.name !== "AbortError") {
-        setSessions((current) =>
-          current.map((session) =>
-            session.id === sessionId ? { ...session, status: "error", error: error.message } : session
-          )
-        );
-        setStatus({ tone: "danger", message: `QA failed: ${error.message}` });
+      if (!r.ok) { const t = await r.text(); throw new Error(errMsg(t, parseJson(t))); }
+      const payload = await r.json();
+      const data = payload?.data ?? payload;
+      setSessions(cur => cur.map(s => s.id === sid ? {
+        ...s,
+        answer: data.answer ?? "",
+        sources: Array.isArray(data.sources) ? data.sources : [],
+        hitCount: Number.isFinite(data.hitCount) ? data.hitCount : 0,
+        latencyMs: Number.isFinite(data.latencyMs) ? data.latencyMs : 0,
+        refused: !!data.refused,
+        status: "done"
+      } : s));
+    } catch (err) {
+      if (err.name !== "AbortError") {
+        setSessions(cur => cur.map(s => s.id === sid ? { ...s, status: "error", error: err.message } : s));
       }
     } finally {
-      if (qaAbortRef.current === controller) qaAbortRef.current = null;
-      setBusy((current) => ({ ...current, qa: false }));
+      if (qaRef.current === ctrl) qaRef.current = null;
+      setBusy(b => ({ ...b, qa: false }));
     }
   }
 
-  if (!auth?.token) {
-    return (
-      <LoginView
-        authMode={authMode}
-        setAuthMode={setAuthMode}
-        authForm={authForm}
-        setAuthForm={setAuthForm}
-        handleAuthSubmit={handleAuthSubmit}
-        busy={busy}
-        status={status}
-      />
-    );
-  }
+  const owner = detail?.accessType === "OWNER";
 
-  const showSidebar = topView !== "library";
-
+  /* ── render ── */
   return (
-    <div className="ei-app">
-      <TopNav
-        topView={topView}
-        setTopView={(value) => {
-          setTopView(value);
-          if (value !== "workspace") setCollectionDetailOpen(false);
-        }}
-        setShowCreateModal={setShowCreateModal}
-        onLogout={handleLogout}
-        username={auth.user?.username}
-      />
+    <div className="h-screen flex flex-col overflow-hidden bg-surface-container-lowest">
+      {/* Header */}
+      <header className="w-full h-16 flex justify-between items-center px-gutter flex-shrink-0 z-40 relative bg-surface-container-lowest border-b border-outline-variant/20">
+        <div className="flex items-center gap-2">
+          <span className="material-symbols-outlined text-primary text-2xl">auto_awesome</span>
+          <span className="font-headline-md text-headline-md text-on-surface font-bold tracking-tight">智能知识库</span>
+        </div>
+        <nav className="hidden md:flex gap-8 items-center absolute left-1/2 transform -translate-x-1/2">
+          <button className={`font-label-md text-label-md relative py-1 transition-colors ${showDocsPanel ? "text-secondary hover:text-primary" : "text-primary after:content-[''] after:absolute after:-bottom-1 after:left-0 after:w-full after:h-[2px] after:bg-primary"}`} onClick={() => setShowDocsPanel(false)}>对话</button>
+          <button className={`font-label-md text-label-md transition-colors ${showDocsPanel ? "text-primary after:content-[''] after:absolute after:-bottom-1 after:left-0 after:w-full after:h-[2px] after:bg-primary relative" : "text-secondary hover:text-primary"}`} onClick={() => setShowDocsPanel(true)}>文档</button>
+        </nav>
+        <div className="flex items-center gap-4">
+          <select className="hidden md:block text-sm border border-outline-variant/40 rounded-lg pl-3 pr-8 py-1.5 bg-white text-on-surface focus:border-primary focus:ring-1 focus:ring-primary/10 outline-none max-w-[200px] truncate appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23737686%22%20stroke-width%3D%222%22%3E%3Cpath%20d%3D%22m6%209%206%206%206-6%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[right_6px_center] bg-[length:16px]" value={kbId ?? ""} onChange={e => setKbId(e.target.value)}>
+            {kbs.map(kb => <option key={kb.id} value={kb.id}>{kb.name}</option>)}
+            {kbs.length === 0 && <option value="">无知识库</option>}
+          </select>
+          <button onClick={() => setShowCreateModal(true)} className="hidden md:flex items-center gap-1 text-sm font-semibold bg-primary text-on-primary px-4 py-2 rounded-xl hover:bg-primary/90 transition-colors">
+            <span className="material-symbols-outlined text-lg">add</span>新建
+          </button>
+          <button aria-label="通知" className="text-secondary hover:text-primary transition-colors active:opacity-80 p-2 rounded-full hover:bg-surface-container-low">
+            <span className="material-symbols-outlined">notifications</span>
+          </button>
+          <button onClick={onLogout} className="flex items-center justify-center w-8 h-8 rounded-full bg-surface-container-highest overflow-hidden active:opacity-80 transition-opacity font-bold text-sm text-secondary hover:text-primary" title="退出登录">
+            {(auth?.user?.username ?? "U").slice(0, 1).toUpperCase()}
+          </button>
+        </div>
+      </header>
 
-      <div className={`ei-shell ${showSidebar ? "" : "library-shell"}`}>
-        {showSidebar ? (
-          <SideNav
-            activeTab={workspaceTab}
-            setWorkspaceTab={(tab) => {
-              setTopView("workspace");
-              setWorkspaceTab(tab);
-              if (tab !== "collections") setCollectionDetailOpen(false);
-            }}
-            detail={detail}
-            onUploadPick={() => {
-              setTopView("workspace");
-              setWorkspaceTab("documents");
-              window.requestAnimationFrame(() => fileInputRef.current?.click());
-            }}
-          />
-        ) : null}
+      {/* Main canvas */}
+      <main className="flex-1 flex flex-col relative overflow-hidden max-w-4xl mx-auto w-full pt-8 pb-4 px-4 md:px-0">
 
-        <main className="ei-main">
-          <div className={`status-banner ${toneClass(status.tone)}`}>{status.message}</div>
+        {/* hidden file input */}
+        <input type="file" ref={fileRef} className="hidden" accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx" onChange={e => { const f = e.target.files?.[0]; if (f) doUpload(null, f); }} />
 
-          {topView === "dashboard" ? (
-            <DashboardView
-              knowledgeBases={knowledgeBases}
-              documents={documents}
-              tasks={tasks}
-              detail={detail}
-              failedTaskCount={failedTaskCount}
-              setTopView={setTopView}
-              setWorkspaceTab={setWorkspaceTab}
-            />
+        {/* Status banner */}
+        {status.msg && (
+          <div className={`mb-3 px-4 py-2 rounded-xl border text-sm max-w-2xl mx-auto w-full ${tone(status.t)}`}>{status.msg}</div>
+        )}
+
+        {/* Docs panel (slide-in) */}
+        {showDocsPanel && (
+          <div className="mb-4 animate-fade-in">
+            <div className="bg-white border border-outline-variant/30 rounded-2xl shadow-sm p-4 max-h-[60vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-headline-md text-headline-md text-on-surface">文档 <span className="text-sm font-normal text-secondary">({docs.length})</span></h3>
+                {owner && docs.length > 0 && (
+                  <button onClick={() => docFileRef.current?.click()} className="text-xs font-semibold text-primary hover:bg-primary/5 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
+                    <span className="material-symbols-outlined text-sm">add</span>上传文档
+                  </button>
+                )}
+              </div>
+
+              {/* hidden file input — shared by compact button and dropzone */}
+              <input type="file" ref={docFileRef} className="hidden" accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx" onChange={e => {
+                const f = e.target.files?.[0];
+                if (f) doUpload(null, f);
+              }} />
+
+              {docs.length === 0 ? (
+                /* empty state with dropzone */
+                <div>
+                  {owner ? (
+                    <div
+                      className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all ${
+                        busy.upload
+                          ? "border-primary/30 bg-surface-container-low pointer-events-none"
+                          : uploadFile
+                          ? "border-green-400/50 bg-green-50/30"
+                          : "border-outline-variant/40 hover:border-primary/50 hover:bg-surface-container-low"
+                      }`}
+                      onClick={() => dropFileRef.current?.click()}
+                      onDragOver={e => { e.preventDefault(); }}
+                      onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) doUpload(null, f); }}
+                    >
+                      <input type="file" ref={dropFileRef} className="hidden" accept=".pdf,.txt,.md,.doc,.docx,.xls,.xlsx" onChange={e => setUploadFile(e.target.files?.[0] ?? null)} />
+                      {busy.upload ? (
+                        <div className="flex items-center justify-center gap-2 text-sm text-secondary py-2">
+                          <span className="material-symbols-outlined animate-spin text-lg">progress_activity</span>
+                          <span>上传中…</span>
+                        </div>
+                      ) : uploadFile ? (
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2 truncate">
+                            <span className="material-symbols-outlined text-primary text-xl flex-shrink-0">description</span>
+                            <span className="text-sm font-medium text-on-surface truncate">{uploadFile.name}</span>
+                            <span className="text-xs text-secondary flex-shrink-0">{fmtBytes(uploadFile.size)}</span>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <button onClick={e => { e.stopPropagation(); setUploadFile(null); }} className="text-xs text-secondary hover:text-error transition-colors px-2 py-1">取消</button>
+                            <button onClick={e => { e.stopPropagation(); doUpload(); }} className="text-xs font-semibold bg-primary text-on-primary px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors">上传</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-2 py-2">
+                          <span className="material-symbols-outlined text-outline text-2xl">cloud_upload</span>
+                          <div>
+                            <span className="text-sm text-secondary">拖拽或点击上传文档</span>
+                            <span className="text-xs text-outline ml-1.5">支持 PDF、DOCX、TXT、MD</span>
+                          </div>
+                          <span className="text-xs font-semibold text-primary bg-primary/5 px-3 py-1 rounded-lg mt-1">选择文档</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-secondary">暂无文档，请联系拥有者上传。</p>
+                  )}
+                </div>
+              ) : (
+                /* document list */
+                <div className="flex flex-col gap-2">
+                  {docs.slice(0, 20).map(d => (
+                    <div key={d.id} className="flex items-center justify-between text-sm py-1.5 px-2 rounded-lg hover:bg-surface-container-low transition-colors">
+                      <div className="flex items-center gap-2 truncate">
+                        <span className="material-symbols-outlined text-base text-secondary">description</span>
+                        <span className="truncate">{d.originalFilename}</span>
+                        <span className="text-xs text-secondary flex-shrink-0">{fmtBytes(d.sizeBytes)}</span>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className={`text-xs px-1.5 py-0.5 rounded-full ${d.processingStatus === "FAILED" ? "bg-error-container text-error" : d.processingStatus === "SUCCEEDED" ? "bg-green-100 text-green-700" : "bg-surface-container text-secondary"}`}>{d.processingStatus === "SUCCEEDED" ? "完成" : d.processingStatus === "FAILED" ? "失败" : d.processingStatus === "PROCESSING" ? "处理中" : "排队中"}</span>
+                        {d.processingStatus === "FAILED" && <button onClick={() => doDelete(d)} disabled={busy.delId === d.id} className="text-xs text-error hover:underline">删除</button>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* tasks summary */}
+              {tasks.filter(t => t.status === "FAILED").length > 0 && (
+                <div className="mt-3 pt-3 border-t border-outline-variant/20">
+                  <p className="text-xs text-secondary mb-1">失败任务</p>
+                  {tasks.filter(t => t.status === "FAILED").slice(0, 5).map(t => (
+                    <div key={t.id} className="flex items-center justify-between text-xs py-1">
+                      <span className="text-error truncate">{t.failureMessage || t.failureCode || "未知错误"}</span>
+                      <button onClick={() => doRetry(t)} disabled={busy.retryId === t.id} className="text-primary font-semibold hover:underline flex-shrink-0 ml-2">重试</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Chat stream */}
+        <div className="flex-1 overflow-y-auto px-2 md:px-8 pb-20 flex flex-col gap-8 scroll-smooth" id="chat-stream">
+          {sessions.length === 0 ? (
+            <div className="flex flex-col items-center justify-center mt-20 mb-10 opacity-80">
+              <div className="w-16 h-16 rounded-2xl bg-surface-container-high flex items-center justify-center mb-6 shadow-sm border border-outline-variant/30">
+                <span className="material-symbols-outlined text-primary text-3xl filled">auto_awesome</span>
+              </div>
+              <h1 className="font-display-lg text-display-lg text-on-surface text-center mb-2">今天想了解什么？</h1>
+              <p className="text-secondary font-body-md text-body-md text-center max-w-md">向您的知识库提问，AI 将从已上传的文档中检索相关信息并生成答案。</p>
+            </div>
           ) : null}
 
-          {topView === "library" ? (
-            <LibraryView
-              cards={collections}
-              setTopView={setTopView}
-              setWorkspaceTab={setWorkspaceTab}
-              setSelectedKnowledgeBaseId={setSelectedKnowledgeBaseId}
-            />
-          ) : null}
+          {sessions.map(s => (
+            <div key={s.id} className="animate-fade-in">
+              {/* User message */}
+              <div className="flex flex-col items-end gap-2 max-w-3xl mx-auto w-full">
+                <span className="font-label-md text-label-md text-secondary">你</span>
+                <div className="bg-surface-container-high text-on-surface px-5 py-3.5 rounded-2xl rounded-tr-sm max-w-[85%] shadow-sm border border-outline-variant/20">
+                  <p className="font-body-md text-body-md leading-relaxed">{s.question}</p>
+                </div>
+              </div>
 
-          {topView === "workspace" && workspaceTab === "documents" ? (
-            <WorkspaceView
-              detail={detail}
-              knowledgeBases={knowledgeBases}
-              selectedKnowledgeBaseId={selectedKnowledgeBaseId}
-              setSelectedKnowledgeBaseId={(value) => {
-                setSelectedKnowledgeBaseId(value);
-                setSessions([]);
-              }}
-              documents={documents}
-              tasks={tasks}
-              busy={busy}
-              uploadFile={uploadFile}
-              setUploadFile={setUploadFile}
-              fileInputRef={fileInputRef}
-              handleUploadSubmit={handleUploadSubmit}
-              handleDeleteDocument={handleDeleteDocument}
-              handleRetryTask={handleRetryTask}
-              sessions={sessions}
-              question={question}
-              setQuestion={setQuestion}
-              handleQaSubmit={handleQaSubmit}
-              stopQa={() => qaAbortRef.current?.abort()}
-              onOpenChat={() => setWorkspaceTab("chat")}
-              docsPanelVisible={docsPanelVisible}
-              setDocsPanelVisible={setDocsPanelVisible}
-            />
-          ) : null}
+              {/* AI response */}
+              <div className="flex flex-col items-start gap-2 max-w-3xl mx-auto w-full mt-6">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-primary text-sm filled">auto_awesome</span>
+                  <span className="font-label-md text-label-md text-primary">
+                    {s.status === "loading" ? "检索知识库…" : s.status === "error" ? "出错了" : "知识库助手"}
+                  </span>
+                  {s.status === "done" && (
+                    <span className="text-[11px] text-secondary bg-surface-container px-2 py-0.5 rounded-full border border-outline-variant/30">
+                      命中 {s.hitCount} · {s.latencyMs}ms
+                    </span>
+                  )}
+                </div>
 
-          {topView === "workspace" && workspaceTab === "chat" ? (
-            <ChatView
-              documents={documents}
-              sessions={sessions}
-              question={question}
-              setQuestion={setQuestion}
-              handleQaSubmit={handleQaSubmit}
-              stopQa={() => qaAbortRef.current?.abort()}
-              busy={busy}
-            />
-          ) : null}
+                {s.answer ? (
+                  <div className={`bg-surface-container-lowest text-on-surface px-5 py-3.5 rounded-2xl rounded-tl-sm w-full border shadow-[0px_4px_12px_rgba(0,0,0,0.02)] ${s.refused ? "border-amber-200 bg-amber-50/30" : "border-outline-variant/40"}`}>
+                    {s.refused && (
+                      <div className="flex items-center gap-2 text-xs text-amber-700 mb-2">
+                        <span className="material-symbols-outlined text-[16px]">info</span>
+                        未找到足够可靠的文档证据，系统已拒绝猜测性回答。
+                      </div>
+                    )}
+                    <p className="font-body-md text-body-md leading-relaxed whitespace-pre-wrap">{s.answer}</p>
 
-          {topView === "workspace" && workspaceTab === "insights" ? (
-            <InsightsView documents={documents} tasks={tasks} failedTaskCount={failedTaskCount} />
-          ) : null}
+                    {s.sources.length > 0 && (
+                      <div className="mt-4 pt-3 border-t border-outline-variant/30">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-label-md text-label-md text-secondary">引用来源</span>
+                          <span className="text-[11px] text-secondary">按相似度排序</span>
+                        </div>
+                        <div className="grid gap-2">
+                          {s.sources.map((src, i) => (
+                            <details key={i} className="group rounded-xl border border-outline-variant/35 bg-surface-container-low px-3 py-2">
+                              <summary className="cursor-pointer list-none flex items-center justify-between gap-3">
+                                <span className="inline-flex items-center gap-2 min-w-0">
+                                  <span className="material-symbols-outlined text-[16px] text-primary">description</span>
+                                  <span className="text-xs font-semibold text-on-surface truncate">{src.documentName || "未命名文档"}</span>
+                                  <span className="text-[11px] text-secondary flex-shrink-0">#{src.chunkIndex ?? i}</span>
+                                </span>
+                                <span className="text-[11px] text-primary bg-primary/5 px-2 py-0.5 rounded-full flex-shrink-0">
+                                  {Number.isFinite(src.score) ? `${Math.round(src.score * 100)}%` : "source"}
+                                </span>
+                              </summary>
+                              {src.preview && <p className="mt-2 text-xs leading-relaxed text-secondary whitespace-pre-wrap">{src.preview}</p>}
+                            </details>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : s.status === "loading" ? (
+                  <div className="bg-surface-container-lowest border border-outline-variant/40 rounded-2xl rounded-tl-sm w-full shadow-[0px_4px_12px_rgba(0,0,0,0.02)] px-5 py-4 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                    <span className="w-2 h-2 rounded-full bg-primary animate-pulse" style={{ animationDelay: "0.2s" }} />
+                    <span className="w-2 h-2 rounded-full bg-primary animate-pulse" style={{ animationDelay: "0.4s" }} />
+                  </div>
+                ) : s.status === "error" ? (
+                  <div className="bg-error-container/20 border border-error/20 rounded-2xl rounded-tl-sm w-full px-5 py-3.5">
+                    <p className="text-sm text-error">{s.error || "发生未知错误"}</p>
+                  </div>
+                ) : null}
 
-          {topView === "workspace" && workspaceTab === "collections" && !collectionDetailOpen ? (
-            <CollectionsView
-              collections={collections}
-              setCollectionDetailOpen={setCollectionDetailOpen}
-              setSelectedKnowledgeBaseId={setSelectedKnowledgeBaseId}
-              setShowCreateModal={setShowCreateModal}
-            />
-          ) : null}
+                {s.status === "done" && (
+                  <div className="flex gap-2 mt-1">
+                    <button onClick={() => navigator.clipboard?.writeText(s.answer)} className="text-secondary hover:text-primary transition-colors p-1" title="复制"><span className="material-symbols-outlined text-[18px]">content_copy</span></button>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
 
-          {topView === "workspace" && workspaceTab === "collections" && collectionDetailOpen ? (
-            <CollectionDetailView
-              detail={detail}
-              selectedKnowledgeBase={selectedKnowledgeBase}
-              documents={documents}
-              busy={busy}
-              setUploadFile={setUploadFile}
-              tableUploadRef={tableUploadRef}
-              handleUploadSubmit={handleUploadSubmit}
-              uploadFile={uploadFile}
-              handleDeleteDocument={handleDeleteDocument}
-              setCollectionDetailOpen={setCollectionDetailOpen}
-            />
-          ) : null}
+          <div ref={chatEndRef} />
+        </div>
 
-          {topView === "workspace" && workspaceTab === "archive" ? (
-            <ArchiveView documents={documents} failedTaskCount={failedTaskCount} />
-          ) : null}
-        </main>
-      </div>
+        {/* Input area */}
+        <div className="absolute bottom-6 left-0 w-full px-4 md:px-8 bg-gradient-to-t from-surface-container-lowest via-surface-container-lowest to-transparent pt-10">
+          <div className="max-w-3xl mx-auto w-full relative">
+            <div className="bg-surface-container-lowest border border-outline-variant/50 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] focus-within:border-primary focus-within:shadow-[0_8px_30px_rgb(37,99,235,0.08)] transition-all duration-300 flex flex-col">
+              <textarea
+                ref={inputRef}
+                className="w-full bg-transparent border-none resize-none focus:ring-0 px-5 py-4 font-body-md text-body-md text-on-surface placeholder:text-outline max-h-32 min-h-[56px]"
+                placeholder="向您的文档提问…"
+                rows={1}
+                value={question}
+                onChange={e => setQuestion(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); doQA(); } }}
+              />
+              <div className="flex justify-between items-center px-3 pb-3">
+                <div className="flex gap-1">
+                  <button onClick={() => fileRef.current?.click()} className="p-2 text-secondary hover:text-primary hover:bg-surface-container rounded-lg transition-colors flex items-center justify-center" title="上传文档">
+                    <span className="material-symbols-outlined text-[20px]">attach_file</span>
+                  </button>
+                </div>
+                <button
+                  onClick={doQA}
+                  disabled={busy.qa || !question.trim()}
+                  className="bg-primary hover:bg-primary/90 text-on-primary w-9 h-9 rounded-xl flex items-center justify-center transition-transform hover:scale-105 active:scale-95 shadow-sm disabled:opacity-50 disabled:hover:scale-100"
+                >
+                  {busy.qa ? <span className="material-symbols-outlined text-[20px] animate-spin">progress_activity</span> : <span className="material-symbols-outlined text-[20px] ml-0.5">arrow_upward</span>}
+                </button>
+              </div>
+            </div>
+            <div className="text-center mt-3">
+              <span className="text-[11px] text-secondary/70 font-label-md">AI 生成内容可能不准确，请核实关键信息。</span>
+            </div>
+          </div>
+        </div>
+      </main>
 
-      {showCreateModal ? (
-        <div className="modal-backdrop" role="presentation" onClick={() => setShowCreateModal(false)}>
-          <div className="modal-card" role="dialog" onClick={(event) => event.stopPropagation()}>
-            <div className="modal-head"><h3>Create Knowledge Base</h3><button className="icon-btn" type="button" onClick={() => setShowCreateModal(false)}><span className="material-symbols-outlined">close</span></button></div>
-            <form className="stack" onSubmit={handleKnowledgeBaseCreate}>
-              <label className="field">
-                <span>Name</span>
-                <input
-                  maxLength={64}
-                  value={knowledgeBaseForm.name}
-                  onChange={(event) => setKnowledgeBaseForm((current) => ({ ...current, name: event.target.value }))}
-                  required
-                />
+      {/* Create KB modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowCreateModal(false)}>
+          <div className="bg-white border border-outline-variant/30 rounded-2xl shadow-[0_18px_38px_rgba(18,31,57,0.2)] p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-headline-md text-on-surface">创建知识库</h3>
+              <button onClick={() => setShowCreateModal(false)} className="text-secondary hover:text-primary p-1"><span className="material-symbols-outlined">close</span></button>
+            </div>
+            <form className="flex flex-col gap-4" onSubmit={createKB}>
+              <label className="flex flex-col gap-1"><span className="text-xs text-secondary font-label-md">名称</span>
+                <input className="border border-outline-variant/60 rounded-xl px-4 py-2.5 text-sm bg-white focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none" maxLength={64} value={kbForm.name} onChange={e => setKbForm(c => ({ ...c, name: e.target.value }))} required />
               </label>
-              <label className="field">
-                <span>Description</span>
-                <textarea
-                  rows={4}
-                  maxLength={240}
-                  value={knowledgeBaseForm.description}
-                  onChange={(event) => setKnowledgeBaseForm((current) => ({ ...current, description: event.target.value }))}
-                />
+              <label className="flex flex-col gap-1"><span className="text-xs text-secondary font-label-md">描述</span>
+                <textarea className="border border-outline-variant/60 rounded-xl px-4 py-2.5 text-sm bg-white focus:border-primary focus:ring-2 focus:ring-primary/10 outline-none resize-none" rows={3} maxLength={240} value={kbForm.description} onChange={e => setKbForm(c => ({ ...c, description: e.target.value }))} />
               </label>
-              <button className="button primary wide" type="submit" disabled={busy.create}>{busy.create ? "Creating..." : "Create KB"}</button>
+              <button type="submit" disabled={busy.create} className="bg-primary hover:bg-primary/90 text-on-primary font-semibold rounded-xl py-3 transition-all disabled:opacity-60">
+                {busy.create ? "创建中…" : "创建知识库"}
+              </button>
             </form>
           </div>
         </div>
-      ) : null}
+      )}
+
+      {/* Mobile bottom bar */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-outline-variant/20 px-4 py-2 flex items-center justify-around z-40">
+        <button onClick={() => setShowDocsPanel(false)} className={`flex flex-col items-center gap-0.5 text-xs ${!showDocsPanel ? "text-primary" : "text-secondary"}`}>
+          <span className="material-symbols-outlined text-xl">forum</span>对话
+        </button>
+        <button onClick={() => setShowDocsPanel(true)} className={`flex flex-col items-center gap-0.5 text-xs ${showDocsPanel ? "text-primary" : "text-secondary"}`}>
+          <span className="material-symbols-outlined text-xl">description</span>文档
+        </button>
+        <button onClick={() => fileRef.current?.click()} className="flex flex-col items-center gap-0.5 text-xs text-secondary">
+          <span className="material-symbols-outlined text-xl">upload_file</span>上传
+        </button>
+        <button onClick={() => setShowCreateModal(true)} className="flex flex-col items-center gap-0.5 text-xs text-secondary">
+          <span className="material-symbols-outlined text-xl">add</span>新建
+        </button>
+      </div>
     </div>
   );
 }
 
+/* ── App shell ──────────────────────────────────── */
+export default function App() {
+  const [auth, setAuth] = useState(() => readAuth());
+  const [status, setStatus] = useState({ t: "neutral", msg: "" });
 
+  function logout() {
+    writeAuth(null);
+    setAuth(null);
+    setStatus({ t: "neutral", msg: "" });
+  }
 
+  if (!auth?.token) {
+    return <LoginView status={status} setStatus={setStatus} />;
+  }
 
-
-function ChatView({ documents, sessions, question, setQuestion, handleQaSubmit, stopQa, busy }) {
-  return (
-    <section className="page chat-workspace">
-      <div className="page-head split">
-        <div>
-          <h1>Chat Workspace</h1>
-          <p>Ask questions in a focused chat workspace with streaming answers and sources.</p>
-        </div>
-        <span className="chip owner">{documents.length} docs connected</span>
-      </div>
-
-      <section className="panel card chat-panel full-chat-panel">
-        <div className="chat-head">
-          <div>
-            <h2>Ask the Knowledge Base</h2>
-            <p>Connected to {documents.length} documents</p>
-          </div>
-        </div>
-
-        <div className="chat-feed">
-          {sessions.map((session) => (
-            <article className="qa-item" key={session.id}>
-              <div className="qa-user">
-                <div className="bubble user-bubble">{session.question}</div>
-                <small>{formatDateTime(session.createdAt)}</small>
-              </div>
-              <div className="qa-assistant">
-                <div className="bubble ai-bubble">{session.answer || "Generating answer..."}</div>
-                {session.sources.length ? (
-                  <div className="source-pack">
-                    <h4>Sources</h4>
-                    {session.sources.map((source, index) => (
-                      <div className="source-row" key={`${session.id}-${source.segmentId ?? index}`}>
-                        <strong>{source.documentName || "untitled"}</strong>
-                        <span className="chip muted">score {source.score?.toFixed?.(2) ?? "n/a"}</span>
-                        <p>{source.content}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-                {session.error ? <div className="inline-error">{session.error}</div> : null}
-              </div>
-            </article>
-          ))}
-          {sessions.length === 0 ? (<EmptyState icon="chat" title="Chat is ready" description="Use this focused mode when you want a wider answer area and uninterrupted citation review." />) : null}
-        </div>
-
-        <form className="chat-input" onSubmit={handleQaSubmit}>
-          <textarea
-            rows={4}
-            value={question}
-            onChange={(event) => setQuestion(event.target.value)}
-            placeholder="Ask anything about your documents..."
-          />
-          <div className="chat-actions">
-            <button className="button ghost" type="button" onClick={stopQa}>Stop</button>
-            <button className="button primary" type="submit" disabled={busy.qa || !question.trim()}>
-              {busy.qa ? "Streaming..." : "Start stream"}
-            </button>
-          </div>
-        </form>
-      </section>
-    </section>
-  );
+  return <CanvasView auth={auth} onLogout={logout} status={status} setStatus={setStatus} />;
 }
-
-
-
-
-
-
-
-
-
-

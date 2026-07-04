@@ -29,7 +29,7 @@ public class DocumentIngestionTask extends AuditableEntity {
   public enum TaskStage {
     QUEUED,
     OCR,
-    DIFY_UPLOAD,
+    UPLOAD,
     INDEXING,
     COMPLETED,
     FAILED
@@ -54,9 +54,6 @@ public class DocumentIngestionTask extends AuditableEntity {
   @Enumerated(EnumType.STRING)
   @Column(length = 32)
   private TaskStage failedStage;
-
-  @Column(length = 128)
-  private String externalBatchId;
 
   @Column(length = 64)
   private String ocrEngine;
@@ -109,14 +106,6 @@ public class DocumentIngestionTask extends AuditableEntity {
 
   public void setFailedStage(TaskStage failedStage) {
     this.failedStage = failedStage;
-  }
-
-  public String getExternalBatchId() {
-    return externalBatchId;
-  }
-
-  public void setExternalBatchId(String externalBatchId) {
-    this.externalBatchId = externalBatchId;
   }
 
   public String getOcrEngine() {

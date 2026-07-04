@@ -1,6 +1,8 @@
 package com.mykb.server.qa.controller;
 
+import com.mykb.server.common.api.ApiResponse;
 import com.mykb.server.common.security.AuthenticatedUser;
+import com.mykb.server.qa.dto.QaAnswerResponse;
 import com.mykb.server.qa.dto.QaStreamRequest;
 import com.mykb.server.qa.service.KnowledgeQaService;
 import jakarta.validation.Valid;
@@ -33,6 +35,14 @@ public class KnowledgeQaController {
       @PathVariable UUID knowledgeBaseId,
       @Valid @RequestBody QaStreamRequest request) {
     return knowledgeQaService.streamAnswer(user, knowledgeBaseId, request);
+  }
+
+  @PostMapping(path = "/qa", consumes = MediaType.APPLICATION_JSON_VALUE)
+  public ApiResponse<QaAnswerResponse> answer(
+      @AuthenticationPrincipal AuthenticatedUser user,
+      @PathVariable UUID knowledgeBaseId,
+      @Valid @RequestBody QaStreamRequest request) {
+    return ApiResponse.success(knowledgeQaService.answer(user, knowledgeBaseId, request));
   }
 }
 

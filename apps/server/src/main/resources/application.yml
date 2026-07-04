@@ -54,26 +54,15 @@ app:
       - pdf
       - md
       - markdown
+      - txt
       - doc
       - docx
-  dify:
-    enabled: ${DIFY_ENABLED:true}
-    base-url: ${DIFY_BASE_URL:http://127.0.0.1:8088/v1}
-    api-key: ${DIFY_API_KEY:replace-me}
-    app-api-key: ${DIFY_APP_API_KEY:${DIFY_API_KEY:replace-me}}
-    dataset-permission: ${DIFY_DATASET_PERMISSION:only_me}
-    provider: ${DIFY_PROVIDER:vendor}
-    indexing-technique: ${DIFY_INDEXING_TECHNIQUE:high_quality}
-    poll-interval: ${DIFY_POLL_INTERVAL:PT2S}
-    max-poll-attempts: ${DIFY_MAX_POLL_ATTEMPTS:30}
-    retrieval-top-k: ${DIFY_RETRIEVAL_TOP_K:5}
-    retrieval-min-score: ${DIFY_RETRIEVAL_MIN_SCORE:0.35}
-    qa-context-max-chars: ${DIFY_QA_CONTEXT_MAX_CHARS:6000}
-    completion-timeout: ${DIFY_COMPLETION_TIMEOUT:PT2M}
-    qa-sse-timeout: ${DIFY_QA_SSE_TIMEOUT:PT2M}
-    qa-refusal-message: ${DIFY_QA_REFUSAL_MESSAGE:No sufficiently relevant knowledge snippets were found, so the system refuses to answer this question.}
   ocr:
     enabled: ${OCR_ENABLED:false}
     base-url: ${OCR_BASE_URL:http://127.0.0.1:8090}
     timeout: ${OCR_TIMEOUT:PT30S}
     pdf-content-type: ${OCR_PDF_CONTENT_TYPE:application/pdf}
+  rag:
+    enabled: ${RAG_ENABLED:true}
+    base-url: ${RAG_BASE_URL:http://127.0.0.1:8091}
+    timeout: ${RAG_TIMEOUT:PT120S}

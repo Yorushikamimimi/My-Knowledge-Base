@@ -6,10 +6,23 @@ Thumbs.db
 .env
 .m2repo/
 apps/server/target/
+apps/server/apps/server/target/
 apps/web/node_modules/
 apps/web/dist/
+apps/web/test-results/
+apps/web/playwright-report/
+apps/rag/.venv/
+__pycache__/
+.pytest_cache/
+.playwright-cli/
+.playwright-mcp/
+.claude/settings.local.json
+docs/superpowers/
+output/playwright/
 
 logs/
 tmp/
+.runtime/storage/
 *.log
 *.err.log
+*.pid

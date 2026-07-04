@@ -21,7 +21,6 @@ import com.mykb.server.knowledgebase.repository.KnowledgeBaseRepository;
 import com.mykb.server.knowledgebase.repository.KnowledgeBaseShareRepository;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -137,35 +136,6 @@ public class DocumentService {
           "DOCUMENT_DELETE_FAILED_ONLY",
           "Only failed documents can be deleted");
     }
-    if (ingestionTaskRepository.existsByDocument_IdAndStatusIn(
-        documentId,
-        EnumSet.of(DocumentIngestionTask.TaskStatus.PENDING, DocumentIngestionTask.TaskStatus.RUNNING))) {
-      throw new AppException(
-          HttpStatus.CONFLICT,
-          "DOCUMENT_TASK_ACTIVE",
-          "Cannot delete a document with an active ingestion task");
-    }
-    DocumentIngestionTask latestTask =
-        ingestionTaskRepository.findByDocument_IdOrderByCreatedAtDesc(documentId).stream()
-            .findFirst()
-            .orElseThrow(
-                () ->
-                    new AppException(
-                        HttpStatus.NOT_FOUND,
-                        "INGESTION_TASK_NOT_FOUND",
-                        "Document ingestion task does not exist"));
-    if (latestTask.getFailedStage() == DocumentIngestionTask.TaskStage.INDEXING) {
-      throw new AppException(
-          HttpStatus.CONFLICT,
-          "DOCUMENT_DELETE_INDEXING_FAILED",
-          "Failed document already reached Dify indexing and cannot be deleted safely");
-    }
-    if (trimToNull(document.getDifyDocumentId()) != null) {
-      throw new AppException(
-          HttpStatus.CONFLICT,
-          "DOCUMENT_DELETE_DIFY_LINKED",
-          "Failed document already linked to Dify and cannot be deleted safely");
-    }
 
     try {
       objectStorageService.delete(document.getStorageBucket(), document.getStorageObjectKey());
@@ -203,18 +173,6 @@ public class DocumentService {
           HttpStatus.CONFLICT,
           "DOCUMENT_ALREADY_PROCESSING",
           "Document ingestion is already in progress");
-    }
-    if (failedTask.getFailedStage() == DocumentIngestionTask.TaskStage.INDEXING) {
-      throw new AppException(
-          HttpStatus.CONFLICT,
-          "TASK_RETRY_INDEXING_FAILED",
-          "Failed task already reached Dify indexing and cannot be retried safely");
-    }
-    if (trimToNull(document.getDifyDocumentId()) != null) {
-      throw new AppException(
-          HttpStatus.CONFLICT,
-          "TASK_RETRY_DIFY_LINKED",
-          "Failed task already created a Dify document and cannot be retried safely");
     }
 
     document.setProcessingStatus(KnowledgeDocument.ProcessingStatus.QUEUED);
@@ -258,7 +216,6 @@ public class DocumentService {
     task.setTaskType(DocumentIngestionTask.TaskType.DOCUMENT_INGESTION);
     task.setStatus(DocumentIngestionTask.TaskStatus.PENDING);
     task.setCurrentStage(DocumentIngestionTask.TaskStage.QUEUED);
-    task.setExternalBatchId(null);
     task.setOcrEngine(null);
     task.setFailureCode(null);
     task.setFailureMessage(null);
@@ -425,7 +382,6 @@ public class DocumentService {
         document.getSizeBytes(),
         document.getStorageProvider().name(),
         document.getProcessingStatus().name(),
-        document.getDifyDocumentId(),
         document.getCreatedAt());
   }
 
@@ -437,7 +393,6 @@ public class DocumentService {
         task.getStatus().name(),
         task.getCurrentStage().name(),
         task.getFailedStage() == null ? null : task.getFailedStage().name(),
-        task.getExternalBatchId(),
         task.getOcrEngine(),
         task.getFailureCode(),
         task.getFailureMessage(),

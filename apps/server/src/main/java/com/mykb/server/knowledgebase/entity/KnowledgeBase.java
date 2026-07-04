@@ -34,9 +34,6 @@ public class KnowledgeBase extends AuditableEntity {
   @Column(nullable = false, length = 16)
   private Visibility visibility = Visibility.PRIVATE;
 
-  @Column(length = 128)
-  private String difyDatasetId;
-
   public UserAccount getOwner() {
     return owner;
   }
@@ -67,13 +64,5 @@ public class KnowledgeBase extends AuditableEntity {
 
   public void setVisibility(Visibility visibility) {
     this.visibility = visibility;
-  }
-
-  public String getDifyDatasetId() {
-    return difyDatasetId;
-  }
-
-  public void setDifyDatasetId(String difyDatasetId) {
-    this.difyDatasetId = difyDatasetId;
   }
 }

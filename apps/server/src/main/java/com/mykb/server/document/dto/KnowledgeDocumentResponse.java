@@ -12,5 +12,4 @@ public record KnowledgeDocumentResponse(
     long sizeBytes,
     String storageProvider,
     String processingStatus,
-    String difyDocumentId,
     Instant createdAt) {}

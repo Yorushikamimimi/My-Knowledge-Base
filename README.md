@@ -1,30 +1,31 @@
-# My Knowledge Base | AI知识库问答平台
+# My Knowledge Base | AI 知识库工程底座
 
 <p align="center">
   <img src="https://img.shields.io/badge/Spring%20Boot-3.3-brightgreen?style=flat-square" />
   <img src="https://img.shields.io/badge/React%20%2B%20Vite-Frontend-blue?style=flat-square" />
-  <img src="https://img.shields.io/badge/Dify-Knowledge%20QA-orange?style=flat-square" />
+  <img src="https://img.shields.io/badge/PostgreSQL%20%2B%20pgvector-RAG%20Base-orange?style=flat-square" />
   <img src="https://img.shields.io/badge/Java-21-lightgrey?style=flat-square" />
 </p>
 
-> 基于 `Spring Boot + React/Vite + Dify` 的 AI 知识库问答平台，打通 `登录 -> 创建知识库 -> 上传文档 -> OCR/Dify 入库 -> 问答` 的完整业务闭环。
+> 基于 `Spring Boot + FastAPI + React/Vite + PostgreSQL/pgvector + Ollama` 的 AI 知识库工程底座。当前已打通 `登录 -> 创建知识库 -> 上传文档 -> 文件存储 -> 文档切片/向量入库 -> RAG 问答 -> Sources 展示` 的最小闭环。
 
 ## 项目定位
 
-这是一个面向实际交付的 `AI engineering`（AI 工程化，中文解释：围绕真实业务流程构建的工程项目）项目，不是简单聊天壳。
+这是一个面向面试展示和工程能力讲解的 `AI engineering`（AI 工程化，中文解释：围绕真实业务流程构建的工程项目）项目，不是简单聊天壳。
 
-- 面向场景：企业知识库、文档问答、内部资料检索
-- 核心价值：让文档上传、入库、检索、问答形成可验收闭环
-- 当前状态：本地联调已通过，主链路可用，适合演示和继续扩展
+- 面向场景：个人/团队知识库、文档管理、本地 RAG 问答
+- 核心价值：展示一个从业务后端到 AI 检索生成链路的完整工程闭环
+- 当前状态：`Dify` 路线已移除；改为 Java 业务服务 + Python RAG 服务 + PostgreSQL/pgvector + Ollama 的本地方案
 
 ## 当前进度
 
 - 已完成 `Auth`、知识库管理、文档上传、任务状态跟踪
-- 已完成 `Dify dataset/document API` 对接
-- 已完成 `PDF -> OCR -> Dify` 入库链路
-- 已完成 `QA / chat SSE` 问答链路和 `Sources`（来源，中文解释：答案引用依据）展示
-- 已完成本地 `Docker` 联调、浏览器验收和截图归档
-- 仍待完成：`Linux` 真实宿主机部署演练
+- 已完成 `LOCAL / MinIO` 存储抽象和文档异步处理框架
+- 已完成 OCR 服务接入开关和 PDF OCR 处理骨架
+- 已移除 `Dify dataset/document API`、Dify 配置和 Dify 数据库字段
+- 已完成本地 RAG 最小闭环：文档解析、切片、Embedding、向量检索、问答生成、`Sources`（来源，中文解释：答案引用依据）展示
+- 已完成 Java 后端到 Python RAG 服务的 HTTP 集成，上传后自动入库，问答接口返回 JSON
+- 仍待完成：真实 `Ollama` 模型连通验收、全服务联调、`Linux` 真实宿主机部署演练
 
 ## 功能预览
 
@@ -40,9 +41,11 @@
 
 ![上传入库](docs/picture/element-2026-03-24T09-11-40-010Z.png)
 
-### 4. 问答与 Sources
+### 4. 问答与 Sources 截图
 
 ![问答与 Sources](docs/picture/element-2026-03-24T09-11-45-298Z.png)
+
+> 说明：早期截图来自 Dify 方案阶段。当前 Dify 已移除，代码已改为本地 RAG 方案；截图后续需要在新链路联调后刷新。
 
 ### 5. 完整验收页
 
@@ -54,22 +57,23 @@
 - 知识库创建、列表、详情、共享
 - 文档上传到 `LOCAL / MinIO` 存储
 - 异步入库任务流转与状态展示
-- 自动创建 `Dify dataset`
-- 普通文件直传入库
-- `PDF -> OCR -> Dify text document` 扫描件链路
-- 知识库范围内的 `QA / chat SSE`
-- 检索结果和 `Sources` 引用返回
+- 普通文件上传和基础处理状态闭环
+- `PDF -> OCR` 扫描件处理骨架
 - 失败任务重试、失败文档删除
+- 本地 RAG：`parse -> chunk -> embedding -> pgvector -> retrieve -> generate -> sources`
+- 检索增强策略：chunk overlap、score threshold、无命中拒答、来源片段预览、命中数量和耗时指标
 
 ## 技术栈
 
 - 前端：`React + Vite`
 - 后端：`Spring Boot 3.3`
+- RAG 服务：`Python + FastAPI`
 - 运行时：`Java 21`
 - 数据库：`PostgreSQL`
+- 向量检索：`pgvector`
 - 缓存：`Redis`
 - 对象存储：`MinIO`
-- AI 核心：`Dify self-hosted`
+- AI 核心：`Ollama`（默认 `nomic-embed-text` + `qwen2.5:7b`）
 - OCR：独立 OCR service
 - 部署：`Docker + host Nginx`
 
@@ -79,55 +83,74 @@
 
 ### 启动顺序
 
-1. 启动 `Dify`：
+1. 启动基础依赖：
 
-```powershell
-cd /d D:\services\dify\docker
-docker compose up -d --build
+```bash
+docker start mykb-pg
+docker start redis-local
 ```
 
-2. 启动项目后端栈：
+如果本机还没有容器，参考 [STARTUP.md](docs/STARTUP.md) 创建 `mykb-pg` 和 `redis-local`。
 
-```powershell
-cd /d D:\Workspace\CodexProject\My_KnowledgeBase
-docker compose --env-file deploy\.env -f deploy/docker-compose.yml up -d --build
+2. 准备本地模型：
+
+```bash
+ollama pull nomic-embed-text
+ollama pull qwen2.5:7b
 ```
 
-3. 启动前端：
+> 说明：当前代码已落地本地 RAG，但真实模型连通和全服务联调还需要后续单独验收。
 
-```powershell
-cd /d D:\Workspace\CodexProject\My_KnowledgeBase\apps\web
-npm install
-npm run dev -- --host 0.0.0.0 --port 3001
+3. 启动 Python RAG 服务：
+
+```bash
+cd apps/rag
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+
+PYTHONPATH=. \
+RAG_DATABASE_URL=postgresql://mykb:mykb@127.0.0.1:5432/mykb \
+.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8091
 ```
 
-4. 打开页面：
+4. 编译并启动后端：
+
+```bash
+cd apps/server
+mvn package -DskipTests -q
+
+cd ../..
+env \
+  DB_HOST=127.0.0.1 DB_PORT=5432 DB_NAME=mykb DB_USERNAME=mykb DB_PASSWORD=mykb \
+  APP_JWT_SECRET=this-is-a-very-long-secret-key-for-local-development-min-32-bytes \
+  APP_ALLOWED_ORIGINS=http://localhost:3001 \
+  APP_STORAGE_TYPE=LOCAL \
+  RAG_BASE_URL=http://127.0.0.1:8091 \
+  OCR_ENABLED=false \
+  java -jar apps/server/target/server-0.1.0-SNAPSHOT.jar
+```
+
+5. 启动前端：
+
+```bash
+cd apps/web
+./node_modules/.bin/vite --host 0.0.0.0 --port 3001
+```
+
+6. 打开页面：
 
 - 前端：`http://localhost:3001`
 - 后端健康检查：`http://127.0.0.1:8081/actuator/health`
+- RAG 健康检查：`http://127.0.0.1:8091/healthz`
 
 ### 关闭顺序
 
-1. 停项目后端栈：
-
-```powershell
-cd /d D:\Workspace\CodexProject\My_KnowledgeBase
-docker compose --env-file deploy\.env -f deploy/docker-compose.yml down
-```
-
-2. 停 `Dify`：
-
-```powershell
-cd /d D:\services\dify\docker
-docker compose down
-```
-
-3. 关闭前端 `npm run dev` 窗口：
-
-- 按 `Ctrl + C`
+1. 关闭后端 `java -jar` 窗口：按 `Ctrl + C`
+2. 关闭前端 Vite 窗口：按 `Ctrl + C`
+3. 如需停止依赖容器：`docker stop mykb-pg redis-local`
 
 完整说明见：
-- [predeploy-report.md](docs/project/predeploy-report.md)
+- [STARTUP.md](docs/STARTUP.md)
 
 ## 目录说明
 
@@ -136,6 +159,7 @@ docker compose down
 |-- apps/
 |   |-- server/          # Spring Boot API
 |   |-- web/             # React frontend workbench
+|   |-- rag/             # FastAPI RAG service
 |   `-- ocr/             # OCR adapter service
 |-- deploy/              # deployment files and Nginx config
 |-- docs/project/        # project docs, reports, decisions
@@ -156,6 +180,6 @@ docker compose down
 
 ## 下一步
 
+- 跑通 `Ollama`、FastAPI RAG、Spring Boot、React 的真实本地联调
+- 刷新本地 RAG 问答截图和演示数据
 - 执行 `Linux` 宿主机部署演练
-- 视需要补充批量清理 / 批量重试能力
-- 如果部署环境受限，继续收敛镜像缓存和构建稳定性

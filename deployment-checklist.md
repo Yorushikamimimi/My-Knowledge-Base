@@ -8,12 +8,10 @@
 - [ ] PostgreSQL data path is confirmed
 - [ ] Redis persistence strategy is confirmed
 - [ ] MinIO account, bucket, and backup strategy are confirmed
-- [ ] Dify self-hosted base URL is confirmed
-- [ ] `DIFY_API_KEY` is confirmed for dataset / document APIs
-- [ ] `DIFY_APP_API_KEY` is confirmed for streaming QA
-- [ ] The Dify QA app input contract (`question`, `context`, `knowledge_base_name`) is configured
+- [ ] Q&A status is confirmed: current endpoint returns `503` until local RAG is implemented
+- [ ] Future local model runtime is confirmed if RAG is enabled, for example Ollama on `11434`
+- [ ] `pgvector` extension and vector schema are confirmed after RAG implementation lands
 - [ ] OCR internal service URL is confirmed
-- [ ] `DIFY_RETRIEVAL_*` and `DIFY_QA_*` runtime values are confirmed
 - [ ] `OCR_ENABLED` / `OCR_TIMEOUT` / `OCR_PDF_CONTENT_TYPE` are confirmed
 - [ ] `deploy/nginx/my-knowledge-base.conf` has been updated for the real domain
 - [ ] `chmod +x scripts/smoke.sh scripts/rehearse-linux.sh` has been executed on Linux

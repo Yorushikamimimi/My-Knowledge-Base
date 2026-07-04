@@ -1,6 +1,7 @@
 # Technical Decision
 
 日期：2026-03-18
+当前修订：2026-07-04
 
 ## 1. 项目类型
 
@@ -27,23 +28,32 @@
 - PostgreSQL：业务数据
 - Redis：缓存、限流和后续任务辅助
 - MinIO：文档对象存储
-- Dify self-hosted：知识库与问答能力
+- PostgreSQL / pgvector：计划承接本地向量索引
+- Ollama 或 OpenAI-compatible 本地模型：计划承接 Embedding / 生成能力
 - OCR 独立容器：扫描件识别与后续文档预处理
 
-## 3. Dify 决策
+## 3. RAG 决策
 
-- 结论：采用 `self-hosted`
+- 结论：移除 Dify，改成本地 RAG
 - 原因：
-  - 更符合“可部署、可回滚、可审查”的项目目标
-  - 环境边界可控，便于本地、测试、正式环境对齐
-  - 更适合简历和项目叙事，不依赖第三方 SaaS 演示环境
+  - Dify 运行成本过高，需要额外容器和内存，不适合当前本地/轻量部署目标
+  - 项目更需要展示 `parse -> chunk -> embedding -> retrieve -> generate` 的工程能力
+  - 本地 RAG 更容易控制数据、部署和面试讲述边界
+- 当前状态：
+  - Dify Java 包、配置项和数据库关联字段已移除
+  - Q&A 接口暂时返回 `503`
+  - 文档摄入目前完成到文件读取、可选 OCR 和处理状态落库
+- 下一步：
+  - 新增 chunk / embedding / vector schema
+  - 接入 `pgvector`
+  - 接入 Ollama 或 OpenAI-compatible 本地模型
+  - 恢复问答、拒答和 sources 引用
 
 ## 4. 部署拓扑
 
 - 结论：采用“同机单服务器 + 分容器隔离”
 - 说明：
   - 本项目 compose：`server + postgres + redis + minio`
-  - Dify：同机独立栈
   - OCR：同机独立容器或独立 worker
   - 公网入口只保留 `Nginx 80/443`
 
@@ -53,7 +63,7 @@
 - 说明：
   - 前端本地启动
   - 后端本地启动
-  - PostgreSQL / Redis / MinIO / Dify 用 Docker
+  - PostgreSQL / Redis / MinIO 用 Docker
   - OCR 在本地容器或独立进程接入
 
 ## 6. 端口规划
@@ -64,7 +74,7 @@
 - Redis: `6379`
 - MinIO API: `9000`
 - MinIO Console: `9001`
-- Dify API: `8088`，内部访问
+- Ollama API: `11434`，可选本地访问
 - OCR Service: `8090`，内部访问
 
 说明：最终项目按部署标准统一使用 `3001/8081`，不再沿用草稿中的 `3000/8080`。
@@ -73,4 +83,6 @@
 
 - OCR 最终是 `PaddleOCR` 还是 `OCRmyPDF + OCR Engine` 组合
 - 异步任务首版是否继续使用数据库任务表，还是补 `Redis Stream`
-- Dify document ingestion 的失败重试策略细节
+- 文档解析器选型：直接 Java 解析、Apache Tika，还是独立解析 worker
+- Embedding 模型选型和维度
+- chunk 粒度、重叠策略、引用定位策略

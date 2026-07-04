@@ -26,26 +26,15 @@ app:
       - pdf
       - md
       - markdown
+      - txt
       - doc
       - docx
-  dify:
-    enabled: true
-    base-url: http://127.0.0.1:8088/v1
-    api-key: test-api-key
-    app-api-key: test-app-api-key
-    dataset-permission: only_me
-    provider: vendor
-    indexing-technique: high_quality
-    poll-interval: PT0.01S
-    max-poll-attempts: 3
-    retrieval-top-k: 5
-    retrieval-min-score: 0.35
-    qa-context-max-chars: 4000
-    completion-timeout: PT5S
-    qa-sse-timeout: PT5S
-    qa-refusal-message: No sufficiently relevant knowledge snippets were found, so the system refuses to answer this question.
   ocr:
     enabled: true
     base-url: http://127.0.0.1:8090
     timeout: PT2S
     pdf-content-type: application/pdf
+  rag:
+    enabled: true
+    base-url: http://127.0.0.1:8091
+    timeout: PT2S

@@ -2,13 +2,12 @@ import { expect, test } from "@playwright/test";
 
 const API_BASE = "http://localhost:8081";
 
-test.beforeEach(async ({ page }) => {
+async function mockApp(page) {
   await page.addInitScript(() => {
-    const auth = {
-      token: "mock-token",
-      user: { id: "user-1", username: "yorushika" }
-    };
-    window.localStorage.setItem("mykb.auth", JSON.stringify(auth));
+    window.localStorage.setItem(
+      "mykb.auth",
+      JSON.stringify({ token: "mock-token", user: { id: "user-1", username: "yorushika" } })
+    );
   });
 
   await page.route(`${API_BASE}/api/v1/**`, async (route) => {
@@ -20,17 +19,7 @@ test.beforeEach(async ({ page }) => {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
-          data: [
-            {
-              id: "kb-1",
-              name: "test",
-              description: "mock kb",
-              accessType: "OWNER",
-              createdAt: "2026-03-20T00:00:00.000Z",
-              updatedAt: "2026-03-23T00:00:00.000Z",
-              documentCount: 2
-            }
-          ]
+          data: [{ id: "kb-1", name: "test", description: "mock kb", accessType: "OWNER" }]
         })
       });
       return;
@@ -40,14 +29,7 @@ test.beforeEach(async ({ page }) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({
-          data: {
-            id: "kb-1",
-            name: "test",
-            description: "mock kb",
-            accessType: "OWNER"
-          }
-        })
+        body: JSON.stringify({ data: { id: "kb-1", name: "test", description: "mock kb", accessType: "OWNER" } })
       });
       return;
     }
@@ -58,22 +40,8 @@ test.beforeEach(async ({ page }) => {
         contentType: "application/json",
         body: JSON.stringify({
           data: [
-            {
-              id: "doc-1",
-              originalFilename: "test-a.txt",
-              sizeBytes: 272,
-              contentType: "text/plain",
-              processingStatus: "SUCCEEDED",
-              createdAt: "2026-03-20T00:00:00.000Z"
-            },
-            {
-              id: "doc-2",
-              originalFilename: "test-b.txt",
-              sizeBytes: 106,
-              contentType: "text/plain",
-              processingStatus: "SUCCEEDED",
-              createdAt: "2026-03-20T01:00:00.000Z"
-            }
+            { id: "doc-1", originalFilename: "alpha.txt", sizeBytes: 272, contentType: "text/plain", processingStatus: "SUCCEEDED" },
+            { id: "doc-2", originalFilename: "beta.txt", sizeBytes: 106, contentType: "text/plain", processingStatus: "SUCCEEDED" }
           ]
         })
       });
@@ -81,89 +49,62 @@ test.beforeEach(async ({ page }) => {
     }
 
     if (request.method() === "GET" && pathname === "/api/v1/knowledge-bases/kb-1/ingestion-tasks") {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: [] }) });
+      return;
+    }
+
+    if (request.method() === "POST" && pathname === "/api/v1/knowledge-bases/kb-1/qa") {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ data: [] })
+        body: JSON.stringify({
+          data: {
+            answer: "alpha 文档说明项目使用 pgvector 做向量检索。",
+            sources: [{ documentId: "doc-1", documentName: "alpha.txt", chunkIndex: 0, score: 0.86, preview: "pgvector 做向量检索" }],
+            hitCount: 1,
+            latencyMs: 18,
+            refused: false
+          }
+        })
       });
       return;
     }
 
-    await route.fulfill({
-      status: 404,
-      contentType: "application/json",
-      body: JSON.stringify({ message: `unhandled mock route: ${request.method()} ${pathname}` })
-    });
+    await route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ message: `unhandled mock route: ${request.method()} ${pathname}` }) });
   });
+}
+
+test.beforeEach(async ({ page }) => {
+  await mockApp(page);
 });
 
-test("workspace hides docs panel and keeps chat usable", async ({ page }) => {
+test("workspace keeps chat and documents reachable", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { name: "test" }).first()).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Documents" })).toBeVisible();
+  await expect(page.getByText("智能知识库").first()).toBeVisible();
+  await expect(page.getByPlaceholder("向您的文档提问…")).toBeVisible();
 
-  await page.getByRole("button", { name: "Hide Docs" }).click();
-  await expect(page.getByRole("button", { name: "Show Docs" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Documents" })).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Ask the Knowledge Base" })).toBeVisible();
+  await page.getByRole("button", { name: "文档" }).click();
+  await expect(page.getByRole("heading", { name: /文档/ })).toBeVisible();
+  await expect(page.getByText("alpha.txt")).toBeVisible();
 
-  for (const viewport of [{ width: 1280, height: 900 }, { width: 960, height: 800 }, { width: 390, height: 844 }]) {
+  await page.getByRole("button", { name: "对话" }).click();
+  await page.getByPlaceholder("向您的文档提问…").fill("项目怎么检索？");
+  await page.keyboard.press("Enter");
+
+  await expect(page.getByText("alpha 文档说明项目使用 pgvector 做向量检索。")).toBeVisible();
+  await expect(page.getByText("命中 1 · 18ms")).toBeVisible();
+});
+
+test("primary controls do not overflow at common breakpoints", async ({ page }) => {
+  for (const viewport of [
+    { width: 1440, height: 960 },
+    { width: 1024, height: 820 },
+    { width: 390, height: 844 }
+  ]) {
     await page.setViewportSize(viewport);
-    await page.reload();
-    await expect(page.getByRole("heading", { name: "test" }).first()).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Ask the Knowledge Base" })).toBeVisible();
-    const hasHorizontalOverflow = await page.evaluate(() => {
-      const root = document.documentElement;
-      return root.scrollWidth - root.clientWidth > 1;
-    });
-    expect(hasHorizontalOverflow).toBe(false);
-  }
-});
-
-test("responsive navigation and full chat workspace are available", async ({ page }) => {
-  await page.goto("/");
-
-  await expect(page.locator(".side-nav")).toBeVisible();
-  await page.getByRole("button", { name: /Open Chat/i }).click();
-  await expect(page.getByRole("heading", { name: "Chat Workspace" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Ask the Knowledge Base" })).toBeVisible();
-
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.reload();
-  await expect(page.locator(".side-nav")).toBeHidden();
-  await expect(page.getByRole("heading", { name: "test" }).first()).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Ask the Knowledge Base" })).toBeVisible();
-});
-
-test("workspace primary controls stay reachable across breakpoints", async ({ page }) => {
-  const breakpoints = [
-    { width: 1440, height: 960, sidebarVisible: true },
-    { width: 1280, height: 900, sidebarVisible: true },
-    { width: 1024, height: 820, sidebarVisible: true },
-    { width: 768, height: 1024, sidebarVisible: false },
-    { width: 390, height: 844, sidebarVisible: false }
-  ];
-
-  for (const viewport of breakpoints) {
-    await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await page.goto("/");
-
-    await expect(page.getByRole("heading", { name: "test" }).first()).toBeVisible();
-    await expect(page.getByRole("button", { name: /Hide Docs|Show Docs/i })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Ask the Knowledge Base" })).toBeVisible();
-    await expect(page.getByPlaceholder("Ask anything about your documents...")).toBeVisible();
-
-    const sideNav = page.locator(".side-nav");
-    if (viewport.sidebarVisible) {
-      await expect(sideNav).toBeVisible();
-    } else {
-      await expect(sideNav).toBeHidden();
-    }
-
-    const docsToggle = page.getByRole("button", { name: /Hide Docs|Show Docs/i });
-    await docsToggle.focus();
-    await expect(docsToggle).toBeFocused();
+    await expect(page.getByPlaceholder("向您的文档提问…")).toBeVisible();
 
     const hasHorizontalOverflow = await page.evaluate(() => {
       const root = document.documentElement;

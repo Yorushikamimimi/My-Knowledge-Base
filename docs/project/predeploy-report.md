@@ -1,5 +1,17 @@
 # Predeploy Report
 
+## Current Status Update (2026-07-04)
+
+This report contains the 2026-03 Dify deployment rehearsal history.
+It is no longer the current deployment target.
+
+Current deployment baseline:
+
+- Active stack: `server + postgres + redis + minio + ocr`
+- Removed dependency: Dify
+- Current Q&A state: disabled, returns `503`
+- Next deployment target after implementation: local RAG using `pgvector` plus a local or OpenAI-compatible model runtime
+
 Date: 2026-03-20
 
 ## Conclusion
