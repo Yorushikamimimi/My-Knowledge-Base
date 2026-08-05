@@ -55,11 +55,11 @@
 - Fixed dataset creation compatibility when knowledge base description is empty
 - Added an in-repo OCR adapter service under `apps/ocr`
 - Switched OCR runtime to `RapidOCR + opencv-python-headless`
-- Wired OCR into [deploy/docker-compose.yml](/D:/Workspace/CodexProject/My_KnowledgeBase/deploy/docker-compose.yml)
+- Wired OCR into [deploy/docker-compose.yml](/D:/Workspace/SelfProject/My-Knowledge-Base/deploy/docker-compose.yml)
 - Fixed backend OCR multipart compatibility with the OCR service contract
 - Passed real OCR smoke for `PDF -> OCR -> Dify ingestion`
-- Added Linux-executable smoke script [smoke.sh](/D:/Workspace/CodexProject/My_KnowledgeBase/scripts/smoke.sh)
-- Added Linux deployment rehearsal wrapper [rehearse-linux.sh](/D:/Workspace/CodexProject/My_KnowledgeBase/scripts/rehearse-linux.sh)
+- Added Linux-executable smoke script [smoke.sh](/D:/Workspace/SelfProject/My-Knowledge-Base/scripts/smoke.sh)
+- Added Linux deployment rehearsal wrapper [rehearse-linux.sh](/D:/Workspace/SelfProject/My-Knowledge-Base/scripts/rehearse-linux.sh)
 - Verified streamed answers and source rendering in the browser
 - Verified new ingestion tasks complete successfully after the backend fixes
 - Added owner-only failed document delete and failed ingestion task retry in backend APIs
@@ -128,7 +128,6 @@ Still pending:
 
 - Run real Dify / OCR smoke tests
 - Then do one Linux deployment rehearsal
-
 
 
 

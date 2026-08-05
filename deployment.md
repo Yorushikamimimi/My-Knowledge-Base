@@ -40,7 +40,7 @@ The repository-managed stack currently includes `server + postgres + redis + min
 
 ## Environment Variables
 
-Use [deploy/.env](/D:/Workspace/CodexProject/My_KnowledgeBase/deploy/.env) for runtime variables.
+Use [deploy/.env](/D:/Workspace/SelfProject/My-Knowledge-Base/deploy/.env) for runtime variables.
 
 Key variables:
 

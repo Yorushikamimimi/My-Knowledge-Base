@@ -68,7 +68,7 @@ The backend smoke paths `health -> auth -> knowledge base -> upload -> ingestion
 ## New Quality Points In This Round
 
 - Added in-repo OCR adapter service under `apps/ocr`
-- Added OCR container wiring to [deploy/docker-compose.yml](/D:/Workspace/CodexProject/My_KnowledgeBase/deploy/docker-compose.yml)
+- Added OCR container wiring to [deploy/docker-compose.yml](/D:/Workspace/SelfProject/My-Knowledge-Base/deploy/docker-compose.yml)
 - Replaced unstable system-package OCR path with `RapidOCR + opencv-python-headless`
 - Fixed OCR multipart request compatibility between backend and OCR service
 - Verified the backend can complete `PDF -> OCR -> Dify ingestion`
@@ -106,6 +106,5 @@ The backend smoke paths `health -> auth -> knowledge base -> upload -> ingestion
 
 - Responsive manual validation for all redesigned pages is not yet fully re-run
 - UI parity against all target mock screens still requires one final visual pass
-
 
 

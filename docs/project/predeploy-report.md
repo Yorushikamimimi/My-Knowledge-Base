@@ -56,14 +56,14 @@ docker compose up -d --build
 2. Start the project stack
 
 ```powershell
-cd /d D:\Workspace\CodexProject\My_KnowledgeBase
+cd /d D:\Workspace\SelfProject\My-Knowledge-Base
 docker compose --env-file deploy\.env -f deploy/docker-compose.yml up -d --build
 ```
 
 3. Start the frontend when you need browser verification
 
 ```powershell
-cd /d D:\Workspace\CodexProject\My_KnowledgeBase\apps\web
+cd /d D:\Workspace\SelfProject\My-Knowledge-Base\apps\web
 npm install
 npm run dev -- --host 0.0.0.0 --port 3001
 ```
@@ -73,7 +73,7 @@ npm run dev -- --host 0.0.0.0 --port 3001
 1. Stop the project stack
 
 ```powershell
-cd /d D:\Workspace\CodexProject\My_KnowledgeBase
+cd /d D:\Workspace\SelfProject\My-Knowledge-Base
 docker compose --env-file deploy\.env -f deploy/docker-compose.yml down
 ```
 
@@ -110,7 +110,7 @@ docker compose down
 
 ## Verified Rehearsal Result
 
-- `postgres / redis / minio / server / ocr` are up from [deploy/docker-compose.yml](/D:/Workspace/CodexProject/My_KnowledgeBase/deploy/docker-compose.yml)
+- `postgres / redis / minio / server / ocr` are up from [deploy/docker-compose.yml](/D:/Workspace/SelfProject/My-Knowledge-Base/deploy/docker-compose.yml)
 - Dify self-hosted stack is reachable on local `8088`
 - `http://127.0.0.1:8081/actuator/health` returned `UP`
 - `http://127.0.0.1:8090/healthz` returned `UP`
@@ -118,8 +118,8 @@ docker compose down
 - `./scripts/smoke.ps1 -BaseUrl http://127.0.0.1:8081 -RunOcrCheck` passed end to end on 2026-03-20
 - Frontend workbench on `http://localhost:3001` was manually validated on 2026-03-20
 - Linux-executable rehearsal package is available via:
-  - [smoke.sh](/D:/Workspace/CodexProject/My_KnowledgeBase/scripts/smoke.sh)
-  - [rehearse-linux.sh](/D:/Workspace/CodexProject/My_KnowledgeBase/scripts/rehearse-linux.sh)
+  - [smoke.sh](/D:/Workspace/SelfProject/My-Knowledge-Base/scripts/smoke.sh)
+  - [rehearse-linux.sh](/D:/Workspace/SelfProject/My-Knowledge-Base/scripts/rehearse-linux.sh)
 - Browser flow verified:
   - login
   - knowledge base selection
@@ -145,7 +145,6 @@ docker compose down
 1. Execute `bash scripts/rehearse-linux.sh` on the target Linux host and capture output
 2. Decide whether bulk cleanup UX is needed beyond the current single-item delete / retry path
 3. If deployment hosts are network-constrained, harden image build caching before release
-
 
 
 

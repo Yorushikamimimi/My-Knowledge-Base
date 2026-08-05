@@ -99,7 +99,7 @@ mvn package -DskipTests -q
 ### 6. 启动后端
 
 ```bash
-cd /Users/yang/Workspace/SelfProject/CodexProject/My_KnowledgeBase
+cd /Users/yang/Workspace/SelfProject/My-Knowledge-Base
 
 env \
   DB_HOST=127.0.0.1 DB_PORT=5432 DB_NAME=mykb DB_USERNAME=mykb DB_PASSWORD=mykb \
