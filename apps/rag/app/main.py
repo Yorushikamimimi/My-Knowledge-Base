@@ -1,6 +1,8 @@
+from contextlib import asynccontextmanager
 from functools import lru_cache
 
 from fastapi import Depends, FastAPI, HTTPException
+from langfuse import get_client
 
 from app.config import Settings, get_settings
 from app.parsers import DocumentParseError, UnsupportedDocumentType
@@ -9,7 +11,16 @@ from app.repository import RagRepository
 from app.schemas import IngestRequest, IngestResponse, QueryRequest, QueryResponse
 from app.service import RagService
 
-app = FastAPI(title="My Knowledge Base RAG Service")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    yield
+    # Long-running service: SDK batches export in the background; flush on shutdown.
+    # No-op when tracing is disabled (LANGFUSE_TRACING_ENABLED=false).
+    get_client().shutdown()
+
+
+app = FastAPI(title="My Knowledge Base RAG Service", lifespan=lifespan)
 
 
 @lru_cache
