@@ -1,0 +1,210 @@
+{
+  "holdout_version": "v1",
+  "status": "FROZEN",
+  "gold_parent": "gold-v1.1",
+  "purpose": "Fresh threshold holdout — never used for parameter selection; only run once after threshold selection freeze",
+  "retrieval_preview_before_freeze": false,
+  "total": 12,
+  "positive": 8,
+  "negative": 4,
+  "clean_negative": 2,
+  "hard_negative": 2,
+  "questions": [
+    {
+      "id": "th-001",
+      "question": "String、StringBuilder、StringBuffer 三者分别适合什么拼接场景？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/Java基础 八股文.md",
+          "section": "3. String / StringBuilder / StringBuffer"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": ["String", "StringBuilder", "StringBuffer", "线程安全"],
+      "category": "positive",
+      "difficulty": "easy",
+      "cluster": null,
+      "notes": "高相关 positive：选型型问题，D01 §3 直接覆盖；该 (doc,section) 未被 Gold V1.1 使用。"
+    },
+    {
+      "id": "th-002",
+      "question": "ThreadPoolExecutor 的四种拒绝策略分别是怎么处理的？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/并发 八股文.md",
+          "section": "9. 线程池"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": ["AbortPolicy", "CallerRunsPolicy", "DiscardPolicy", "DiscardOldestPolicy"],
+      "category": "positive",
+      "difficulty": "medium",
+      "cluster": "D",
+      "notes": "高相关 positive：拒绝策略表直接覆盖；该 section 未被 Gold 使用（Gold 只用 D03 §1/§11）。"
+    },
+    {
+      "id": "th-003",
+      "question": "JVM 里堆和栈各自存放什么，为什么说栈比堆快？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/JVM 八股文.md",
+          "section": "2. 堆 vs 栈"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": ["堆", "栈", "线程私有", "GC"],
+      "category": "positive",
+      "difficulty": "medium",
+      "cluster": "E",
+      "notes": "中等相关 positive：D04 §2 直接覆盖（含'栈快'原因）；该 section 未被 Gold 使用。"
+    },
+    {
+      "id": "th-004",
+      "question": "Spring Bean 从实例化到销毁的完整生命周期是什么？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/Spring ， Spring Boot 八股文.md",
+          "section": "4. Bean 生命周期"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": ["实例化", "依赖注入", "@PostConstruct", "@PreDestroy"],
+      "category": "positive",
+      "difficulty": "easy",
+      "cluster": "A",
+      "notes": "高相关 positive：D05 §4 直接覆盖；该 section 未被 Gold 使用（Gold 用 D05 §3/§9/§10）。"
+    },
+    {
+      "id": "th-005",
+      "question": "MySQL 慢查询排查一般看 EXPLAIN 的哪些关键字段？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/MySQL 八股文.md",
+          "section": "5. 慢查询排查"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": ["EXPLAIN", "type", "key", "rows", "Extra"],
+      "category": "positive",
+      "difficulty": "medium",
+      "cluster": "C",
+      "notes": "高相关 positive：D07 §5 直接覆盖（type/key/rows/Extra）；该 section 未被 Gold 使用。"
+    },
+    {
+      "id": "th-006",
+      "question": "Redis 的过期删除和内存淘汰机制有什么区别？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/Redis 八股文.md",
+          "section": "4. 过期删除 vs 内存淘汰"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": ["惰性删除", "定期删除", "allkeys-lru", "volatile-ttl"],
+      "category": "positive",
+      "difficulty": "medium",
+      "cluster": "B",
+      "notes": "高相关 positive：D08 §4 直接覆盖（惰性/定期 vs 淘汰策略）；该 section 未被 Gold 使用。"
+    },
+    {
+      "id": "th-007",
+      "question": "TCP 四次挥手为什么不能合并成三次？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/计算机网络 八股文.md",
+          "section": "3. 四次挥手"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": ["FIN", "ACK", "全双工", "数据没发完"],
+      "category": "positive",
+      "difficulty": "medium",
+      "cluster": null,
+      "notes": "中等相关 positive：D11 §3 直接覆盖（为什么不是三次）；该 section 未被 Gold 使用（Gold 用 D11 §6）。"
+    },
+    {
+      "id": "th-008",
+      "question": "零拷贝是怎么减少数据拷贝的，主要应用在哪里？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/操作系统 八股文.md",
+          "section": "5. 零拷贝"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": ["零拷贝", "用户态", "内核态", "Kafka", "Netty"],
+      "category": "positive",
+      "difficulty": "medium",
+      "cluster": "F",
+      "notes": "中等相关 positive：D10 §5 直接覆盖；该 section 未被 Gold 使用（Gold 用 D10 §4/§6）。与 Kafka 字面相邻（应用例子），但证据在本节，不作为 negative。"
+    },
+    {
+      "id": "th-101",
+      "question": "Redis Cluster 的槽位分配和迁移机制是怎么工作的？",
+      "expected_behavior": "refuse",
+      "expected_sources": [],
+      "source_match": "any",
+      "expected_keywords": [],
+      "category": "negative",
+      "difficulty": "hard",
+      "cluster": null,
+      "notes": "clean out-of-corpus：Corpus 全文 'cluster/槽/slot' 零出现（已静态验证）。Corpus 只有单机 Redis 概念（数据类型/持久化/缓存/锁），无 Cluster 槽位机制。",
+      "why_hard": "Redis 相关问题会被 Redis 文档（D08/D09）字面召回",
+      "likely_confusing_documents": ["Vault/Personal_Archive/10-Knowledge/backend/八股/Redis 八股文.md", "Vault/Personal_Archive/10-Knowledge/backend/速查/Redis与分布式中间件集训.md"],
+      "why_corpus_is_insufficient": "Corpus 无任何 Redis Cluster / 槽位 / 迁移内容，'cluster' 字样 0 次"
+    },
+    {
+      "id": "th-102",
+      "question": "ClickHouse 的列式存储和 MergeTree 合并机制是怎么实现的？",
+      "expected_behavior": "refuse",
+      "expected_sources": [],
+      "source_match": "any",
+      "expected_keywords": [],
+      "category": "negative",
+      "difficulty": "medium",
+      "cluster": null,
+      "notes": "clean out-of-corpus：Corpus 全文 'clickhouse/列式/merge tree' 零出现（已静态验证）。",
+      "why_hard": "数据库相关概念可能命中 D07 MySQL 文档",
+      "likely_confusing_documents": ["Vault/Personal_Archive/10-Knowledge/backend/八股/MySQL 八股文.md"],
+      "why_corpus_is_insufficient": "Corpus 无列式存储/MergeTree 内容，'列式' 0 次"
+    },
+    {
+      "id": "th-103",
+      "question": "Spring Security 的过滤器链是按什么顺序执行的？",
+      "expected_behavior": "refuse",
+      "expected_sources": [],
+      "source_match": "any",
+      "expected_keywords": [],
+      "category": "negative",
+      "difficulty": "hard",
+      "cluster": "A",
+      "notes": "hard negative：Corpus 仅在 D06 §4（ThreadLocal 场景）提到 'Spring Security 的 SecurityContextHolder'，无过滤器链/执行顺序任何内容。embedding 很可能命中 D06 §4。",
+      "why_hard": "'Spring Security' 字面命中 D06 §4，但该节只讲 ThreadLocal 场景",
+      "likely_confusing_documents": ["Vault/Personal_Archive/10-Knowledge/backend/速查/全流程后端微服务资料.md"],
+      "why_corpus_is_insufficient": "过滤器链机制（OncePerRequestFilter/顺序）不在 Corpus"
+    },
+    {
+      "id": "th-104",
+      "question": "MySQL 的半同步复制是怎么保证主从数据不丢的？",
+      "expected_behavior": "refuse",
+      "expected_sources": [],
+      "source_match": "any",
+      "expected_keywords": [],
+      "category": "negative",
+      "difficulty": "hard",
+      "cluster": "C",
+      "notes": "hard negative：Corpus '半同步' 零出现；'复制' 只在 D07 §3 binlog 主从复制语境出现。embedding 很可能命中 D07 §3。",
+      "why_hard": "'复制/binlog/主从' 命中 D07 §3（binlog 归档主从复制），但无半同步机制",
+      "likely_confusing_documents": ["Vault/Personal_Archive/10-Knowledge/backend/八股/MySQL 八股文.md"],
+      "why_corpus_is_insufficient": "半同步复制（ack 机制）不在 Corpus，只有 binlog 一句话"
+    }
+  ]
+}
