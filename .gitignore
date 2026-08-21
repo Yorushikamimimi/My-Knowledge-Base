@@ -23,6 +23,7 @@ output/playwright/
 logs/
 tmp/
 .runtime/storage/
+.runtime/eval/
 *.log
 *.err.log
 *.pid

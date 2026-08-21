@@ -1,0 +1,78 @@
+{
+  "corpus_version": "v1",
+  "description": "Machine-readable mirror of docs/phase2/corpus-v1.md (FROZEN). Paths are relative to the Obsidian vault root.",
+  "documents": [
+    {
+      "id": "D01",
+      "domain": "Java",
+      "path": "Vault/Personal_Archive/10-Knowledge/backend/八股/Java基础 八股文.md",
+      "main_topic": "Java 语言基础"
+    },
+    {
+      "id": "D02",
+      "domain": "Java",
+      "path": "Vault/Personal_Archive/10-Knowledge/backend/八股/集合 八股文.md",
+      "main_topic": "集合"
+    },
+    {
+      "id": "D03",
+      "domain": "Java",
+      "path": "Vault/Personal_Archive/10-Knowledge/backend/八股/并发 八股文.md",
+      "main_topic": "并发"
+    },
+    {
+      "id": "D04",
+      "domain": "Java",
+      "path": "Vault/Personal_Archive/10-Knowledge/backend/八股/JVM 八股文.md",
+      "main_topic": "JVM"
+    },
+    {
+      "id": "D05",
+      "domain": "Spring",
+      "path": "Vault/Personal_Archive/10-Knowledge/backend/八股/Spring ， Spring Boot 八股文.md",
+      "main_topic": "Spring / Spring Boot"
+    },
+    {
+      "id": "D06",
+      "domain": "Spring",
+      "path": "Vault/Personal_Archive/10-Knowledge/backend/速查/全流程后端微服务资料.md",
+      "main_topic": "微服务资料（含 Spring 域）"
+    },
+    {
+      "id": "D07",
+      "domain": "MySQL",
+      "path": "Vault/Personal_Archive/10-Knowledge/backend/八股/MySQL 八股文.md",
+      "main_topic": "MySQL"
+    },
+    {
+      "id": "D08",
+      "domain": "Redis",
+      "path": "Vault/Personal_Archive/10-Knowledge/backend/八股/Redis 八股文.md",
+      "main_topic": "Redis"
+    },
+    {
+      "id": "D09",
+      "domain": "Redis",
+      "path": "Vault/Personal_Archive/10-Knowledge/backend/速查/Redis与分布式中间件集训.md",
+      "main_topic": "Redis 与分布式中间件集训"
+    },
+    {
+      "id": "D10",
+      "domain": "backend",
+      "path": "Vault/Personal_Archive/10-Knowledge/backend/八股/操作系统 八股文.md",
+      "main_topic": "操作系统"
+    },
+    {
+      "id": "D11",
+      "domain": "backend",
+      "path": "Vault/Personal_Archive/10-Knowledge/backend/八股/计算机网络 八股文.md",
+      "main_topic": "计算机网络"
+    },
+    {
+      "id": "D12",
+      "domain": "mixed",
+      "path": "Vault/Personal_Archive/10-Knowledge/backend/速查/知识概念.md",
+      "main_topic": "知识概念（noise/hard）"
+    }
+  ]
+}
