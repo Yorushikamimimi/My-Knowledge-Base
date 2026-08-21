@@ -58,12 +58,33 @@ EVAL_NAMESPACE = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")  # DNS namesp
 EVAL_KB_NAME = "mykb-eval-corpus-v1"
 
 
-def eval_kb_id() -> str:
-    return str(uuid.uuid5(EVAL_NAMESPACE, EVAL_KB_NAME))
+def eval_kb_id(chunk_size: int | None = None, chunk_overlap: int | None = None) -> str:
+    """Deterministic eval KB id. Config-aware when chunk params are given so
+    different chunk strategies never read each other's chunks."""
+    if chunk_size is None or chunk_overlap is None:
+        return str(uuid.uuid5(EVAL_NAMESPACE, EVAL_KB_NAME))
+    return str(
+        uuid.uuid5(
+            EVAL_NAMESPACE,
+            f"{EVAL_KB_NAME}-chunk-{chunk_size}-{chunk_overlap}",
+        )
+    )
 
 
-def document_id_for(corpus_version: str, relative_path: str) -> str:
-    return str(uuid.uuid5(EVAL_NAMESPACE, f"{corpus_version}:{relative_path}"))
+def document_id_for(
+    corpus_version: str,
+    relative_path: str,
+    chunk_size: int | None = None,
+    chunk_overlap: int | None = None,
+) -> str:
+    if chunk_size is None or chunk_overlap is None:
+        return str(uuid.uuid5(EVAL_NAMESPACE, f"{corpus_version}:{relative_path}"))
+    return str(
+        uuid.uuid5(
+            EVAL_NAMESPACE,
+            f"{corpus_version}:{chunk_size}:{chunk_overlap}:{relative_path}",
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -93,6 +114,23 @@ def _gold_version_from(gold_file: Path) -> str:
     return gold_file.stem.replace("gold-", "")
 
 
+def load_split(split_file: Path) -> dict:
+    """Load the DEV/TEST split (see docs/phase2/gold-split-v1.1.json)."""
+    data = json.loads(split_file.read_text(encoding="utf-8"))
+    return {
+        "dev": set(data["dev"]["question_ids"]),
+        "test": set(data["test"]["question_ids"]),
+    }
+
+
+def filter_gold_by_split(gold: list[dict], split: str, split_map: dict) -> list[dict]:
+    """Filter gold questions to a split. 'all' returns everything."""
+    if split == "all":
+        return list(gold)
+    allowed = split_map[split]
+    return [q for q in gold if q["id"] in allowed]
+
+
 # ---------------------------------------------------------------------------
 # Ingestion (reuses production logic)
 # ---------------------------------------------------------------------------
@@ -103,6 +141,8 @@ def ingest_document(
     kb_id: str,
     doc: dict,
     vault_root: Path,
+    chunk_size: int | None = None,
+    chunk_overlap: int | None = None,
 ) -> int:
     """Ingest one corpus document through RagService.ingest (production path).
 
@@ -117,7 +157,7 @@ def ingest_document(
 
     request = IngestRequest(
         knowledgeBaseId=kb_id,
-        documentId=document_id_for("v1", doc["path"]),
+        documentId=document_id_for("v1", doc["path"], chunk_size, chunk_overlap),
         documentName=Path(doc["path"]).name,
         contentType="text/markdown",
         contentBase64=base64.b64encode(raw).decode("ascii"),
@@ -280,16 +320,28 @@ def write_outputs(out_path: Path, payload: dict) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Retrieval-only benchmark (Baseline V1)")
+    parser = argparse.ArgumentParser(
+        description="Production-faithful retrieval-only benchmark (Gold V1.1, DEV/TEST split)"
+    )
     parser.add_argument("--vault-root", required=True, help="Obsidian vault root path")
     parser.add_argument("--gold", default=None, type=Path,
                         help="path to gold JSON (default: repo docs/phase2/gold-v1.1.json)")
     parser.add_argument("--corpus", default=None, type=Path,
                         help="path to corpus-v1.json (default: repo docs/phase2/corpus-v1.json)")
+    parser.add_argument("--split", default=None, type=Path,
+                        help="path to gold-split JSON (default: repo docs/phase2/gold-split-v1.1.json)")
+    parser.add_argument("--run-split", choices=["dev", "test", "all"], default="all",
+                        help="which split to run (dev/test/all); default all")
+    parser.add_argument("--allow-test", action="store_true",
+                        help="explicitly allow running TEST split (guard against accidental TEST use)")
     parser.add_argument("--out", default=".runtime/eval/retrieval-baseline-v1.json", type=Path)
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--min-score", type=float, default=None, help="defaults to settings.min_score")
     parser.add_argument("--skip-ingest", action="store_true", help="reuse existing eval KB chunks")
+    parser.add_argument("--chunk-size", type=int, default=None,
+                        help="benchmark-only chunk_size override (production defaults untouched)")
+    parser.add_argument("--chunk-overlap", type=int, default=None,
+                        help="benchmark-only chunk_overlap override (production defaults untouched)")
     args = parser.parse_args(argv)
 
     # Privacy gate: never send real data to Langfuse.
@@ -297,8 +349,26 @@ def main(argv: list[str] | None = None) -> int:
         print("ERROR: LANGFUSE_TRACING_ENABLED must be false for benchmark", file=sys.stderr)
         return 2
 
-    settings: Settings = get_settings()
-    min_score = args.min_score if args.min_score is not None else settings.min_score
+    # TEST split guard: never run held-out TEST without explicit --allow-test.
+    if args.run_split == "test" and not args.allow_test:
+        print(
+            "ERROR: TEST split requires --allow-test (held-out until selection freeze)",
+            file=sys.stderr,
+        )
+        return 2
+
+    base_settings: Settings = get_settings()
+    min_score = args.min_score if args.min_score is not None else base_settings.min_score
+
+    # Benchmark-only chunk override: copy settings, never mutate production defaults.
+    settings = base_settings.model_copy(
+        update={
+            "chunk_size": args.chunk_size if args.chunk_size is not None else base_settings.chunk_size,
+            "chunk_overlap": (
+                args.chunk_overlap if args.chunk_overlap is not None else base_settings.chunk_overlap
+            ),
+        }
+    )
     chunk_size = settings.chunk_size
     overlap = settings.chunk_overlap
 
@@ -310,13 +380,16 @@ def main(argv: list[str] | None = None) -> int:
     repo_root = Path(__file__).resolve().parents[3]  # My-Knowledge-Base/
     args.gold = args.gold or (repo_root / "docs" / "phase2" / "gold-v1.1.json")
     args.corpus = args.corpus or (repo_root / "docs" / "phase2" / "corpus-v1.json")
+    args.split = args.split or (repo_root / "docs" / "phase2" / "gold-split-v1.1.json")
     if not args.out.is_absolute():
         args.out = repo_root / args.out
 
     docs = load_corpus(args.corpus)
     gold = load_gold(args.gold)
     gold_version = _gold_version_from(args.gold)
-    kb_id = eval_kb_id()
+    split_map = load_split(args.split)
+    gold = filter_gold_by_split(gold, args.run_split, split_map)
+    kb_id = eval_kb_id(chunk_size, overlap)
 
     global _NAME_TO_PATH
     _NAME_TO_PATH = {Path(d["path"]).name: d["path"] for d in docs}
@@ -336,7 +409,7 @@ def main(argv: list[str] | None = None) -> int:
     if not args.skip_ingest:
         for doc in docs:
             try:
-                n = ingest_document(service, kb_id, doc, vault_root)
+                n = ingest_document(service, kb_id, doc, vault_root, chunk_size, overlap)
                 ingest_summary["documents"] += 1
                 ingest_summary["chunks"] += n
             except Exception as exc:  # surface as INGESTION_FAILED; do not hide
@@ -458,6 +531,8 @@ def main(argv: list[str] | None = None) -> int:
         "benchmark_version": "retrieval-baseline-v1",
         "corpus_version": "v1",
         "gold_version": gold_version,
+        "split": args.run_split,
+        "split_file": str(args.split.name),
         "git_commit": git_commit(),
         "embedding_model": settings.embedding_model,
         "embedding_dimension": 768,

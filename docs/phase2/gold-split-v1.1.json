@@ -1,0 +1,27 @@
+{
+  "split_version": "v1.1",
+  "gold_parent": "gold-v1.1",
+  "status": "FROZEN",
+  "purpose": "DEV for chunk parameter selection; TEST held out until configuration selection freeze",
+  "dev": {
+    "total": 20,
+    "positive": 15,
+    "negative": 5,
+    "question_ids": [
+      "q-001", "q-002", "q-003", "q-005", "q-006",
+      "q-008", "q-009", "q-011", "q-012", "q-013",
+      "q-014", "q-017", "q-018", "q-021", "q-022",
+      "q-023", "q-024", "q-026", "q-027", "q-028"
+    ]
+  },
+  "test": {
+    "total": 10,
+    "positive": 7,
+    "negative": 3,
+    "question_ids": [
+      "q-004", "q-007", "q-010", "q-015", "q-016",
+      "q-019", "q-020",
+      "q-025", "q-029", "q-030"
+    ]
+  }
+}

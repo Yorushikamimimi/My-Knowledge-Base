@@ -158,6 +158,81 @@ def test_gold_v11_q001_has_three_sources():
     assert q001["source_match"] == "any"
 
 
+def test_gold_split_completeness_and_disjoint():
+    """DEV ∪ TEST = 30, DEV ∩ TEST = ∅, ratio 15/5 and 7/3."""
+    split = rb.load_split(REPO_ROOT / "docs" / "phase2" / "gold-split-v1.1.json")
+    gold = rb.load_gold(REPO_ROOT / "docs" / "phase2" / "gold-v1.1.json")
+    all_ids = {q["id"] for q in gold}
+    dev, test = split["dev"], split["test"]
+    assert len(dev) == 20
+    assert len(test) == 10
+    assert dev & test == set()
+    assert dev | test == all_ids
+    # ratio: DEV 15 pos/5 neg, TEST 7 pos/3 neg
+    by_cat = {"dev_pos": 0, "dev_neg": 0, "test_pos": 0, "test_neg": 0}
+    for q in gold:
+        if q["id"] in dev:
+            by_cat["dev_pos" if q["category"] == "positive" else "dev_neg"] += 1
+        if q["id"] in test:
+            by_cat["test_pos" if q["category"] == "positive" else "test_neg"] += 1
+    assert by_cat == {"dev_pos": 15, "dev_neg": 5, "test_pos": 7, "test_neg": 3}
+
+
+def test_split_filter():
+    gold = rb.load_gold(REPO_ROOT / "docs" / "phase2" / "gold-v1.1.json")
+    split = rb.load_split(REPO_ROOT / "docs" / "phase2" / "gold-split-v1.1.json")
+    dev = rb.filter_gold_by_split(gold, "dev", split)
+    test = rb.filter_gold_by_split(gold, "test", split)
+    allg = rb.filter_gold_by_split(gold, "all", split)
+    assert len(dev) == 20 and len(test) == 10 and len(allg) == 30
+    assert {q["id"] for q in dev} == split["dev"]
+    assert {q["id"] for q in test} == split["test"]
+    # TEST positive covers all 6 clusters + 1 non-cluster backend basic
+    test_pos = [q for q in test if q["category"] == "positive"]
+    clusters = {q.get("cluster") or "none" for q in test_pos}
+    assert {"A", "B", "C", "D", "E", "F", "none"} <= clusters
+    # q-023 Kafka is in DEV (known regression, not a fresh TEST signal)
+    assert "q-023" in split["dev"]
+    # TEST negative = 1 clean + 2 hard
+    test_neg = [q for q in test if q["category"] == "negative"]
+    clean = sum(1 for q in test_neg if "out-of-corpus" in q.get("notes", ""))
+    hard = sum(1 for q in test_neg if "hard negative" in q.get("notes", ""))
+    assert clean == 1 and hard == 2
+
+
+def test_chunk_override_does_not_modify_production_defaults():
+    from app.config import get_settings
+
+    before = get_settings()
+    # run main? no — assert the override mechanism is a model_copy on a local copy
+    src = inspect.getsource(rb.main)
+    assert "--chunk-size" in src and "--chunk-overlap" in src
+    assert "model_copy" in src  # benchmark-only copy, production defaults untouched
+    after = get_settings()
+    assert before.chunk_size == after.chunk_size == 450
+    assert before.chunk_overlap == after.chunk_overlap == 80
+
+
+def test_config_aware_kb_and_document_ids():
+    """Different chunk configs must use different KB/doc UUIDs."""
+    kb_450 = rb.eval_kb_id(450, 80)
+    kb_300 = rb.eval_kb_id(300, 50)
+    assert kb_450 != kb_300
+    assert rb.eval_kb_id(450, 80) == kb_450  # deterministic
+    doc_450 = rb.document_id_for("v1", "Vault/x.md", 450, 80)
+    doc_300 = rb.document_id_for("v1", "Vault/x.md", 300, 50)
+    assert doc_450 != doc_300
+    assert rb.document_id_for("v1", "Vault/x.md", 450, 80) == doc_450
+
+
+def test_test_split_requires_allow_test_flag(monkeypatch, capsys):
+    monkeypatch.setenv("LANGFUSE_TRACING_ENABLED", "false")
+    rc = rb.main(["--vault-root", "/nonexistent", "--run-split", "test"])
+    assert rc == 2
+    out = capsys.readouterr().err
+    assert "--allow-test" in out
+
+
 def test_gold_record_normalizes_document_to_basename():
     """DB stores only basename in document_name; gold documents must be
     normalized to basename so document/section matching works end-to-end."""
