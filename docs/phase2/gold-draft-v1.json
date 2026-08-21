@@ -1,0 +1,623 @@
+{
+  "meta": {
+    "version": "v1-draft",
+    "phase": "2A-2b",
+    "total": 30,
+    "positive": 22,
+    "negative": 8,
+    "out_of_corpus_negative": 4,
+    "hard_negative": 4,
+    "source_match": "any",
+    "schema": "docs/phase2/gold-schema-v1.md",
+    "basis": "docs/phase2/anchor-audit.md + docs/phase2/anchors/D01-D12"
+  },
+  "questions": [
+    {
+      "id": "q-001",
+      "question": "在同一个类里，一个方法直接调用另一个标注了 @Transactional 的方法，为什么事务可能不生效？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/Spring ， Spring Boot 八股文.md",
+          "section": "9. @Transactional"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": [
+        "同类内部调用",
+        "this",
+        "绕过代理",
+        "AOP"
+      ],
+      "category": "positive",
+      "difficulty": "medium",
+      "cluster": "A",
+      "notes": "D05 S9 失效场景表第一行直接给出：同类内部调用 this.xxx() 绕过代理。 原理型（\"为什么\"），难度 medium。"
+    },
+    {
+      "id": "q-002",
+      "question": "Spring 事务传播行为里 REQUIRED 和 REQUIRES_NEW 有什么区别？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/Spring ， Spring Boot 八股文.md",
+          "section": "9. @Transactional"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": [
+        "REQUIRED",
+        "REQUIRES_NEW",
+        "传播行为",
+        "新开事务"
+      ],
+      "category": "positive",
+      "difficulty": "easy",
+      "cluster": "A",
+      "notes": "D05 S9 传播行为两行定义：REQUIRED 有则加入无则新建，REQUIRES_NEW 强制新开。"
+    },
+    {
+      "id": "q-003",
+      "question": "Spring AOP 的底层动态代理在什么情况下会用 JDK 动态代理，什么情况下会用 CGLIB？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/Spring ， Spring Boot 八股文.md",
+          "section": "3. AOP"
+        },
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/Spring ， Spring Boot 八股文.md",
+          "section": "10. JDK 动态代理 vs CGLIB"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": [
+        "JDK 动态代理",
+        "CGLIB",
+        "接口",
+        "继承"
+      ],
+      "category": "positive",
+      "difficulty": "medium",
+      "cluster": "A",
+      "notes": "D05 S3 给原则（有接口 JDK、无接口 CGLIB），S10 给完整对比表；任一命中即 Hit。"
+    },
+    {
+      "id": "q-004",
+      "question": "方法里用 try/catch 把异常吞掉之后，为什么 @Transactional 可能不会回滚？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/Spring ， Spring Boot 八股文.md",
+          "section": "9. @Transactional"
+        },
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/速查/全流程后端微服务资料.md",
+          "section": "5. 声明式事务 @Transactional"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": [
+        "catch",
+        "吞异常",
+        "感知不到异常",
+        "setRollbackOnly"
+      ],
+      "category": "positive",
+      "difficulty": "hard",
+      "cluster": "A",
+      "notes": "非 compound：D05 S9 失效场景表【异常被 catch 吞掉 → Spring 感知不到异常】单独足以解释不回滚原因；D06 S5【catch 住异常不抛出，事务不会回滚】+修复方式也单独足够。任一命中即 Hit。"
+    },
+    {
+      "id": "q-005",
+      "question": "缓存穿透是什么问题，一般怎么解决？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/Redis 八股文.md",
+          "section": "5. 缓存穿透 / 击穿 / 雪崩"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": [
+        "缓存穿透",
+        "布隆过滤器",
+        "缓存空值",
+        "参数校验"
+      ],
+      "category": "positive",
+      "difficulty": "easy",
+      "cluster": "B",
+      "notes": "D08 S5 表格：穿透=查不存在的数据每次打 DB，解法缓存空值/布隆/参数校验。"
+    },
+    {
+      "id": "q-006",
+      "question": "缓存击穿和缓存雪崩本质上的区别是什么？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/Redis 八股文.md",
+          "section": "5. 缓存穿透 / 击穿 / 雪崩"
+        },
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/速查/Redis与分布式中间件集训.md",
+          "section": "7. 缓存三大问题"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": [
+        "击穿",
+        "雪崩",
+        "热点 key",
+        "TTL 随机"
+      ],
+      "category": "positive",
+      "difficulty": "medium",
+      "cluster": "B",
+      "notes": "区别型：击穿=单个热点 key 失效瞬时压力；雪崩=大量 key 同时失效。D08 S5 与 D09 S7 均支持，任一命中即 Hit。"
+    },
+    {
+      "id": "q-007",
+      "question": "Redis 分布式锁为什么释放锁的时候要用 Lua 脚本？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/Redis 八股文.md",
+          "section": "8. 分布式锁"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": [
+        "Lua",
+        "原子",
+        "判断 value",
+        "删除 key"
+      ],
+      "category": "positive",
+      "difficulty": "medium",
+      "cluster": "B",
+      "notes": "evidence 核对：D08 S8【解锁用 Lua 判断 value+删除 key 必须原子】单独足够。D09 S8 全文（主从切换/Watchdog/Fencing Token/降风险）无 Lua 解锁机制 → 不加入 source。"
+    },
+    {
+      "id": "q-008",
+      "question": "拿到分布式锁之后直接执行 DEL 释放，为什么可能会误删别人的锁？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/Redis 八股文.md",
+          "section": "8. 分布式锁"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": [
+        "DEL",
+        "UUID",
+        "误删",
+        "唯一标识"
+      ],
+      "category": "positive",
+      "difficulty": "hard",
+      "cluster": "B",
+      "notes": "修订：D08 S8【value 存 UUID 解锁前校验】【不能直接 DEL：可能误删别人的锁】单独足够。D09 S8 是主从切换锁丢失相邻概念，非 DEL 误删机制 → 已删除。"
+    },
+    {
+      "id": "q-009",
+      "question": "什么是覆盖索引，它为什么能避免回表？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/MySQL 八股文.md",
+          "section": "1. 索引"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": [
+        "覆盖索引",
+        "回表",
+        "查询字段都在索引里"
+      ],
+      "category": "positive",
+      "difficulty": "easy",
+      "cluster": "C",
+      "notes": "D07 S1：查询字段都在索引里→直接返回，不需要回表。"
+    },
+    {
+      "id": "q-010",
+      "question": "InnoDB 的聚簇索引和非聚簇索引在叶子节点上存的内容有什么区别？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/MySQL 八股文.md",
+          "section": "1. 索引"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": [
+        "聚簇索引",
+        "非聚簇索引",
+        "叶子存主键",
+        "整行数据"
+      ],
+      "category": "positive",
+      "difficulty": "medium",
+      "cluster": "C",
+      "notes": "区别型：聚簇叶子存整行、非聚簇叶子存主键值需回表。"
+    },
+    {
+      "id": "q-011",
+      "question": "MySQL 默认的事务隔离级别是什么，它解决了哪些问题？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/MySQL 八股文.md",
+          "section": "2. 事务"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": [
+        "Repeatable Read",
+        "不可重复读",
+        "幻读",
+        "InnoDB"
+      ],
+      "category": "positive",
+      "difficulty": "easy",
+      "cluster": "C",
+      "notes": "D07 S2 隔离级别表：RR 是 MySQL 默认，不可重复读无、幻读 InnoDB 部分解决。"
+    },
+    {
+      "id": "q-012",
+      "question": "MVCC 为什么能让普通 SELECT 读不阻塞写操作？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/MySQL 八股文.md",
+          "section": "3. MVCC"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": [
+        "一致性快照",
+        "undo log",
+        "Read View",
+        "多版本"
+      ],
+      "category": "positive",
+      "difficulty": "hard",
+      "cluster": "C",
+      "notes": "原理：普通 SELECT 读一致性快照不阻塞写；依赖 undo log 旧版本 + Read View 可见性判断。"
+    },
+    {
+      "id": "q-013",
+      "question": "HashMap 为什么在多线程环境下不安全？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/集合 八股文.md",
+          "section": "3. HashMap"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": [
+        "无同步控制",
+        "并发 put",
+        "resize",
+        "数据覆盖"
+      ],
+      "category": "positive",
+      "difficulty": "easy",
+      "cluster": "D",
+      "notes": "D02 S3：无同步控制，并发 put/resize 可能数据覆盖、丢失、结构异常。"
+    },
+    {
+      "id": "q-014",
+      "question": "ConcurrentHashMap 在 JDK 1.7 和 1.8 的实现有什么区别？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/集合 八股文.md",
+          "section": "4. ConcurrentHashMap"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": [
+        "Segment",
+        "CAS",
+        "synchronized",
+        "分段锁"
+      ],
+      "category": "positive",
+      "difficulty": "medium",
+      "cluster": "D",
+      "notes": "D02 S4 版本对比表：1.7 Segment 分段锁、1.8 CAS+synchronized 数组+链表+红黑树。"
+    },
+    {
+      "id": "q-015",
+      "question": "线程池场景下使用 ThreadLocal 为什么可能造成内存泄漏？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/并发 八股文.md",
+          "section": "11. ThreadLocal"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": [
+        "remove",
+        "线程池复用",
+        "内存泄漏",
+        "数据污染"
+      ],
+      "category": "positive",
+      "difficulty": "hard",
+      "cluster": "D",
+      "notes": "修订：D06 S4 讲的是线程复用【串号/数据泄露】，不是【内存泄漏】，单独不足以支撑本问题，已从 expected_sources 删除。仅保留 D03 S11（线程池中不及时 remove() → 内存泄漏、数据污染），单 section 单独足够。"
+    },
+    {
+      "id": "q-016",
+      "question": "Minor GC 和 Full GC 有什么区别？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/JVM 八股文.md",
+          "section": "4. 垃圾回收"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": [
+        "Minor GC",
+        "Full GC",
+        "新生代",
+        "老年代",
+        "暂停"
+      ],
+      "category": "positive",
+      "difficulty": "easy",
+      "cluster": "E",
+      "notes": "D04 S4：Minor 回收新生代频率高成本小；Full 涉及老年代暂停时间长。"
+    },
+    {
+      "id": "q-017",
+      "question": "双亲委派机制解决了什么问题，它是怎么工作的？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/JVM 八股文.md",
+          "section": "5. 类加载"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": [
+        "双亲委派",
+        "父加载器",
+        "避免重复加载",
+        "保护核心类库"
+      ],
+      "category": "positive",
+      "difficulty": "medium",
+      "cluster": "E",
+      "notes": "D04 S5：先让父加载器尝试、父不行自己加载；作用避免重复加载+保护核心库。"
+    },
+    {
+      "id": "q-018",
+      "question": "进程和线程的根本区别是什么？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/并发 八股文.md",
+          "section": "1. 进程 vs 线程"
+        },
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/操作系统 八股文.md",
+          "section": "6. 进程 vs 线程（OS 视角）"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": [
+        "资源分配单位",
+        "CPU 调度单位",
+        "共享资源"
+      ],
+      "category": "positive",
+      "difficulty": "easy",
+      "cluster": "F",
+      "notes": "跨视角：D03 S1（Java 视角）与 D10 S6（OS 视角）均给出同一核心区别，任一命中即 Hit。"
+    },
+    {
+      "id": "q-019",
+      "question": "epoll 相比 select 在高并发场景下为什么更高效？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/操作系统 八股文.md",
+          "section": "4. select / poll / epoll"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": [
+        "就绪通知",
+        "全量遍历",
+        "内核管理",
+        "fd 上限"
+      ],
+      "category": "positive",
+      "difficulty": "hard",
+      "cluster": "F",
+      "notes": "原理型：select/poll 每次全量遍历+用户态拷贝；epoll 就绪通知不全量扫描。"
+    },
+    {
+      "id": "q-020",
+      "question": "Java 中什么情况下会触发 NullPointerException，常见防御方式有哪些？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/Java基础 八股文.md",
+          "section": "NPE（NullPointerException）"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": [
+        "null",
+        "判空",
+        "Optional",
+        "NPE"
+      ],
+      "category": "positive",
+      "difficulty": "easy",
+      "cluster": null,
+      "notes": "D01 S13：对 null 引用调用方法触发；防御：判空/Optional/日志。含真实实习实例。"
+    },
+    {
+      "id": "q-021",
+      "question": "Cookie、Session 和 Token 三者有什么区别，各自的适用场景是什么？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/计算机网络 八股文.md",
+          "section": "6. Cookie / Session / Token"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": [
+        "Cookie",
+        "Session",
+        "Token",
+        "无状态",
+        "前后端分离"
+      ],
+      "category": "positive",
+      "difficulty": "medium",
+      "cluster": null,
+      "notes": "D11 计算机网络域 positive（D11 此前无任何题）。D11 S6 对比表完整（存储位置/适用场景/Token 无状态优势），单 section 独立足够。替换被删除的 q-021（Cache Aside：D06 S7 只陈述更新策略不解释【为什么】，单独不足，且 B cluster 题量最多）。"
+    },
+    {
+      "id": "q-022",
+      "question": "MySQL 深分页（比如 LIMIT 100000, 10）为什么慢，有什么优化思路？",
+      "expected_behavior": "answer",
+      "expected_sources": [
+        {
+          "document": "Vault/Personal_Archive/10-Knowledge/backend/八股/MySQL 八股文.md",
+          "section": "6. 深分页"
+        }
+      ],
+      "source_match": "any",
+      "expected_keywords": [
+        "扫描并丢弃",
+        "游标分页",
+        "先查 ID 再回表"
+      ],
+      "category": "positive",
+      "difficulty": "medium",
+      "cluster": "C",
+      "notes": "D07 S6：先扫描丢弃前 10 万行；优化游标分页或先查 ID 再回表。场景型。"
+    },
+    {
+      "id": "q-023",
+      "question": "Kafka ISR 的工作机制是什么？",
+      "expected_behavior": "refuse",
+      "expected_sources": [],
+      "source_match": "any",
+      "expected_keywords": [],
+      "category": "negative",
+      "difficulty": "hard",
+      "cluster": null,
+      "notes": "[out-of-corpus] 历史 negative case（Baseline score=0.4781 曾被错误放行）。Corpus V1 四大领域+后端基础均无 Kafka 内容，应 refuse。"
+    },
+    {
+      "id": "q-024",
+      "question": "ZooKeeper 的 ZAB 协议是如何保证数据一致性的？",
+      "expected_behavior": "refuse",
+      "expected_sources": [],
+      "source_match": "any",
+      "expected_keywords": [],
+      "category": "negative",
+      "difficulty": "medium",
+      "cluster": null,
+      "notes": "[out-of-corpus] 修订：原 gRPC/Thrift 序列化题因 D06 S8 存在 RPC/Feign/序列化相邻概念不够 clean，换为 ZooKeeper ZAB。Corpus V1 无 ZooKeeper/ZAB/共识协议任何内容，零相邻概念。"
+    },
+    {
+      "id": "q-025",
+      "question": "Kubernetes 的 Pod 是怎么被调度到节点的？",
+      "expected_behavior": "refuse",
+      "expected_sources": [],
+      "source_match": "any",
+      "expected_keywords": [],
+      "category": "negative",
+      "difficulty": "medium",
+      "cluster": null,
+      "notes": "out-of-corpus：D06 S11 只提 K8s 自动扩缩容/自愈一句话，无调度机制。"
+    },
+    {
+      "id": "q-026",
+      "question": "Prometheus 的拉取式指标采集和告警规则是怎么实现的？",
+      "expected_behavior": "refuse",
+      "expected_sources": [],
+      "source_match": "any",
+      "expected_keywords": [],
+      "category": "negative",
+      "difficulty": "hard",
+      "cluster": null,
+      "notes": "[out-of-corpus] 修订：原 Elasticsearch 倒排索引题因 D12 S5 存在倒排索引字面相邻概念不够 clean，换为 Prometheus。Corpus V1 无 Prometheus/监控/指标采集任何内容，零相邻概念。"
+    },
+    {
+      "id": "q-027",
+      "question": "G1 垃圾回收器里的 SATB 和 RSet 分别是怎么工作的？",
+      "expected_behavior": "refuse",
+      "expected_sources": [],
+      "source_match": "any",
+      "expected_keywords": [
+        "G1",
+        "Region"
+      ],
+      "category": "negative",
+      "difficulty": "hard",
+      "cluster": "E",
+      "notes": "hard negative：D04 S6 只写 'G1 按 Region 划分堆、大堆场景更均衡' 一句话，无 SATB/RSet 实现。Retriever 会因 G1 命中 D04 S6，但 corpus 不足回答。 最可能误命中的 source: Vault/Personal_Archive/10-Knowledge/backend/八股/JVM 八股文.md → 「6. 常见垃圾回收器」"
+    },
+    {
+      "id": "q-028",
+      "question": "ReentrantLock 的 AQS 等待队列具体是怎么实现公平锁和非公平锁的？",
+      "expected_behavior": "refuse",
+      "expected_sources": [],
+      "source_match": "any",
+      "expected_keywords": [
+        "ReentrantLock",
+        "AQS"
+      ],
+      "category": "negative",
+      "difficulty": "hard",
+      "cluster": "D",
+      "notes": "hard negative：D03 S8 有 ReentrantLock 对比表和 AQS 演示链接标题，但正文无 AQS 队列/公平锁实现细节。 最可能误命中的 source: Vault/Personal_Archive/10-Knowledge/backend/八股/并发 八股文.md → 「8. synchronized vs Lock」"
+    },
+    {
+      "id": "q-029",
+      "question": "MySQL 在可重复读隔离级别下是怎么用 Next-Key Lock 解决幻读的？",
+      "expected_behavior": "refuse",
+      "expected_sources": [],
+      "source_match": "any",
+      "expected_keywords": [
+        "幻读",
+        "隔离级别"
+      ],
+      "category": "negative",
+      "difficulty": "hard",
+      "cluster": "C",
+      "notes": "hard negative：D07 S2 只写 'RR 幻读 InnoDB 部分解决'，无 Next-Key Lock/间隙锁机制；D07 全文无 'Next-Key'。Retriever 会因幻读/隔离级别命中 D07 S2。 最可能误命中的 source: Vault/Personal_Archive/10-Knowledge/backend/八股/MySQL 八股文.md → 「2. 事务」"
+    },
+    {
+      "id": "q-030",
+      "question": "Redis Sentinel 在主节点宕机后是怎么完成故障转移的？",
+      "expected_behavior": "refuse",
+      "expected_sources": [],
+      "source_match": "any",
+      "expected_keywords": [
+        "主从切换",
+        "哨兵"
+      ],
+      "category": "negative",
+      "difficulty": "hard",
+      "cluster": "B",
+      "notes": "hard negative：D08 S8 与 D09 S8 只提 'Redis 主从切换 → 锁可靠性风险'，无 Sentinel 机制。Retriever 会因主从切换命中 D08 S8/D09 S8。 最可能误命中的 source: Vault/Personal_Archive/10-Knowledge/backend/八股/Redis 八股文.md → 「8. 分布式锁」"
+    }
+  ]
+}
