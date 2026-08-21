@@ -163,3 +163,7 @@
 - 受控 chunk 实验：450/80、300/50 INVALID（D06/D09 context overflow）；200/40 SELECTED（12/12 ingest，DEV MRR 0.4856，held-out TEST MRR 0.7）
 - Threshold 实验：DEV 选 0.625 但 Fresh Holdout 未泛化（Negative Refusal 0.8→0.25），结论 single cosine threshold 不足
 - 生产决策：chunk 升级 200/40（min_score 保持 0.35），真实链路 D06/D09 入库 SUCCEEDED
+
+## 2026-08-21 — RAG Advanced Optimization V1 CLOSED / ACCEPTED
+
+正式收口。详见 `docs/PROJECT_HANDOFF.md` 与 `docs/phase2/final-evaluation.md`。

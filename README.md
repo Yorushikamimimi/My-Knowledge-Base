@@ -173,6 +173,8 @@ cd apps/web
 
 ## 文档链接
 
+- [Project Handoff / 当前工程状态](docs/PROJECT_HANDOFF.md)
+- [RAG Evaluation Final Report](docs/phase2/final-evaluation.md)
 - [requirements-summary.md](docs/project/requirements-summary.md)
 - [mvp-boundary.md](docs/project/mvp-boundary.md)
 - [technical-decision.md](docs/project/technical-decision.md)
