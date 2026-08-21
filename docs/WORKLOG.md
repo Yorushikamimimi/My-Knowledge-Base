@@ -146,3 +146,20 @@
 - 项目本地环境拉起（Docker PostgreSQL + Redis + 后端 + 前端）
 - 配置和启动文档整理
 - Header KB 选择器样式修复（原生箭头和文字重叠问题）
+
+## 2026-08-21 — Phase 0 / 1 / 2 里程碑摘要（RAG 进阶优化收口）
+
+### Phase 0 — Baseline 真实跑通
+- 真实全链路验收：React 上传 Markdown → Spring Boot → FastAPI → Ollama embedding → pgvector 入库 → 问答 → Sources
+- 测试：Test A（@Transactional 同类调用，score 0.7203）、Test B（语义改写 0.7150）、Test C（Kafka ISR 负例 0.4781 被错误放行）
+
+### Phase 1 — Langfuse Observability
+- `rag-query` trace 树（query-embedding / vector-retrieval / ollama-generation），Ollama usage 映射 input/output，lifespan shutdown
+- Langfuse Cloud UI 人工验收通过；tracing disabled 时对 RAG 行为零影响
+
+### Phase 2 — Retrieval Evaluation（本轮正式收口，详见 docs/phase2/final-evaluation.md）
+- 建立 Corpus V1（12 篇真实技术笔记）+ Gold V1.1（30 cases）+ DEV/TEST split
+- 生产 faithful Benchmark Runner（无 truncation / 无 generation / 无 Langfuse）
+- 受控 chunk 实验：450/80、300/50 INVALID（D06/D09 context overflow）；200/40 SELECTED（12/12 ingest，DEV MRR 0.4856，held-out TEST MRR 0.7）
+- Threshold 实验：DEV 选 0.625 但 Fresh Holdout 未泛化（Negative Refusal 0.8→0.25），结论 single cosine threshold 不足
+- 生产决策：chunk 升级 200/40（min_score 保持 0.35），真实链路 D06/D09 入库 SUCCEEDED

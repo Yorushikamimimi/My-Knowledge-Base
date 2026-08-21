@@ -11,8 +11,8 @@ class Settings(BaseSettings):
     chat_model: str = "qwen2.5:7b"
     openai_base_url: str = "http://127.0.0.1:11434/v1"
     openai_api_key: str = ""
-    chunk_size: int = 450
-    chunk_overlap: int = 80
+    chunk_size: int = 200
+    chunk_overlap: int = 40
     min_score: float = 0.35
 
 

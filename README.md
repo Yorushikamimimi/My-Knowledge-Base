@@ -25,7 +25,9 @@
 - 已移除 `Dify dataset/document API`、Dify 配置和 Dify 数据库字段
 - 已完成本地 RAG 最小闭环：文档解析、切片、Embedding、向量检索、问答生成、`Sources`（来源，中文解释：答案引用依据）展示
 - 已完成 Java 后端到 Python RAG 服务的 HTTP 集成，上传后自动入库，问答接口返回 JSON
-- 仍待完成：真实 `Ollama` 模型连通验收、全服务联调、`Linux` 真实宿主机部署演练
+- 已完成真实 `Ollama` 模型连通与全服务联调验收（`nomic-embed-text` + `qwen2.5:7b`），并经受控实验将生产切片配置评估为 `chunk 200/40`
+- 已完成 `Langfuse` RAG 可观测性接入（Phase 1）与 Retrieval Evaluation 基准（Phase 2，详见 `docs/phase2/final-evaluation.md`）
+- 仍待完成：`Linux` 真实宿主机部署演练
 
 ## 功能预览
 
@@ -68,7 +70,7 @@
 - 前端：`React + Vite`
 - 后端：`Spring Boot 3.3`
 - RAG 服务：`Python + FastAPI`
-- 运行时：`Java 21`
+- 运行时：`Java 17`
 - 数据库：`PostgreSQL`
 - 向量检索：`pgvector`
 - 缓存：`Redis`
@@ -180,6 +182,6 @@ cd apps/web
 
 ## 下一步
 
-- 跑通 `Ollama`、FastAPI RAG、Spring Boot、React 的真实本地联调
+- 跑通 `Ollama`、FastAPI RAG、Spring Boot、React 的真实本地联调（已完成）
 - 刷新本地 RAG 问答截图和演示数据
 - 执行 `Linux` 宿主机部署演练

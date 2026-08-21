@@ -209,8 +209,10 @@ def test_chunk_override_does_not_modify_production_defaults():
     assert "--chunk-size" in src and "--chunk-overlap" in src
     assert "model_copy" in src  # benchmark-only copy, production defaults untouched
     after = get_settings()
-    assert before.chunk_size == after.chunk_size == 450
-    assert before.chunk_overlap == after.chunk_overlap == 80
+    # production defaults are the evaluated configuration (Phase 2B-1 acceptance)
+    assert before.chunk_size == after.chunk_size == 200
+    assert before.chunk_overlap == after.chunk_overlap == 40
+    assert before.min_score == 0.35
 
 
 def test_config_aware_kb_and_document_ids():
@@ -283,3 +285,16 @@ def test_gold_record_normalizes_document_to_basename():
     assert cm.section_hit_at[1] is True
     assert cm.first_relevant_rank == 1
     assert cm.relevant_survived_filter is True
+
+
+def test_production_config_final_values():
+    """Final accepted production configuration (Phase 2B closeout)."""
+    from app.config import Settings
+
+    s = Settings()
+    assert s.chunk_size == 200
+    assert s.chunk_overlap == 40
+    assert s.min_score == 0.35
+    assert s.embedding_model == "nomic-embed-text"
+    assert s.chat_model == "qwen2.5:7b"
+    assert s.provider == "ollama"
