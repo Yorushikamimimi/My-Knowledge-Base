@@ -21,11 +21,11 @@
 
 - 已完成 `Auth`、知识库管理、文档上传、任务状态跟踪
 - 已完成 `LOCAL / MinIO` 存储抽象和文档异步处理框架
-- 已完成 OCR 服务接入开关和 PDF OCR 处理骨架
+- 已实现可选 OCR 服务接入与 PDF OCR 处理代码；本轮联调关闭 OCR，未验证识别效果
 - 已移除 `Dify dataset/document API`、Dify 配置和 Dify 数据库字段
 - 已完成本地 RAG 最小闭环：文档解析、切片、Embedding、向量检索、问答生成、`Sources`（来源，中文解释：答案引用依据）展示
 - 已完成 Java 后端到 Python RAG 服务的 HTTP 集成，上传后自动入库，问答接口返回 JSON
-- 已完成真实 `Ollama` 模型连通与全服务联调验收（`nomic-embed-text` + `qwen2.5:7b`），并经受控实验将生产切片配置评估为 `chunk 200/40`
+- 2026-09-23 隔离联调验证了合成 TXT / MD / DOCX / 文本层 PDF 从 Java 上传、FastAPI 切片与向量入库到本地 Ollama 问答的链路；扫描件 PDF 在 OCR 关闭时未产生切片。这不代表已在干净机器或 Docker Compose 下完成首次启动验收。切片参数实验结果仍见 [Phase 2 报告](docs/phase2/final-evaluation.md)，本轮未重跑基准
 - 已完成 `Langfuse` RAG 可观测性接入（Phase 1）与 Retrieval Evaluation 基准（Phase 2，详见 `docs/phase2/final-evaluation.md`）
 - 仍待完成：`Linux` 真实宿主机部署演练
 
@@ -101,7 +101,7 @@ ollama pull nomic-embed-text
 ollama pull qwen2.5:7b
 ```
 
-> 说明：当前代码已落地本地 RAG，但真实模型连通和全服务联调还需要后续单独验收。
+> 本轮实际联调的范围与限制见 [启动文档中的验证边界](docs/STARTUP.md#validation-boundary)；上述命令尚未作为干净环境首次启动流程整体验收。
 
 3. 启动 Python RAG 服务：
 
@@ -154,6 +154,12 @@ cd apps/web
 完整说明见：
 - [STARTUP.md](docs/STARTUP.md)
 
+## 验证范围（2026-09-23）
+
+- 本批定向回归：隔离源码副本中的 RAG Python 选定测试集 47 项通过；Java RAG 客户端错误映射 2 项及文档失败任务状态集成测试 1 项通过（集成测试使用 H2 和 stub RAG 客户端）。Java 后端其余测试未在本批重跑。前端生产构建和 4 项 mock API Playwright 结果来自此前验证，不属于本批回归。
+- 真实服务链路：在临时 PostgreSQL/pgvector 和已安装的本地 Ollama 模型上，合成 TXT、MD、DOCX、文本层 PDF 各写入 1 个切片；问答返回合成标记及来源。无可提取文本的 PDF 在 `OCR_ENABLED=false` 时报告 RAG 入库失败，不再记为成功任务；同一文档 ID 的旧切片保持不变。
+- 未覆盖：干净机器首次启动、Docker Compose 全服务启动、OCR 识别、MinIO、浏览器直连真实后端，以及托管模型服务。此次没有下载模型或发送外部模型请求。
+
 ## 目录说明
 
 ```text
@@ -184,6 +190,6 @@ cd apps/web
 
 ## 下一步
 
-- 跑通 `Ollama`、FastAPI RAG、Spring Boot、React 的真实本地联调（已完成）
+- 在干净环境按首次启动指南复验依赖和服务顺序；本轮完成的是隔离环境下的真实后端 / RAG / 本地模型联调，浏览器测试仍使用 mock API
 - 刷新本地 RAG 问答截图和演示数据
 - 执行 `Linux` 宿主机部署演练

@@ -1,5 +1,7 @@
 # 启动文档
 
+本文给出预期的本地启动步骤。2026-09-23 的隔离联调结果和未覆盖范围见文末；不能据此认定已在干净机器上按本指南完整启动。
+
 ## 项目简介
 
 智能知识库（My Knowledge Base）—— AI 驱动的文档管理与 RAG 问答平台。上传文档，AI 自动处理，然后可以针对文档内容提问。
@@ -67,7 +69,7 @@ ollama pull qwen2.5:7b
 - Embedding：`nomic-embed-text`
 - Chat：`qwen2.5:7b`
 
-> 本轮先完成代码落地；Ollama 连通性、真实 embedding 和真实问答启动验收放到后续执行。
+> 本地 Ollama、真实 embedding 和问答链路已于 2026-09-23 在隔离环境使用合成资料验证。该验证没有覆盖干净环境首次启动或 Docker Compose 全服务启动，详见文末。
 
 ### 4. 启动 RAG 服务
 
@@ -99,7 +101,7 @@ mvn package -DskipTests -q
 ### 6. 启动后端
 
 ```bash
-cd /Users/yang/Workspace/SelfProject/My-Knowledge-Base
+cd /path/to/My-Knowledge-Base  # 替换为本地克隆路径
 
 env \
   DB_HOST=127.0.0.1 DB_PORT=5432 DB_NAME=mykb DB_USERNAME=mykb DB_PASSWORD=mykb \
@@ -161,21 +163,27 @@ docker exec redis-local redis-cli -a local_dev_only ping  # Redis
 
 ---
 
-## 运行测试
+## 本轮测试记录（2026-09-23）
 
-```bash
-# 后端 Java 测试（13 个集成测试）
-cd apps/server
-mvn test
+- 本批 Java 定向回归：JDK 21 下 RAG 客户端错误映射测试 2 项通过；文档失败任务状态集成测试 1 项通过，使用临时 H2 和 stub RAG 客户端。测试在不含本地配置的隔离源码副本离线运行；Java 后端其余测试未在本批重跑。
+- Python RAG：在不含本地配置的隔离源码副本运行以下选定测试集，47 项通过；未运行 `tests/test_retrieval_benchmark.py`。
 
-# RAG 服务测试
-cd apps/rag
-PYTHONPATH=. .venv/bin/python -m pytest tests -q
+  ```bash
+  cd apps/rag
+  PYTHONPATH=. .venv/bin/python -m pytest -q -p no:cacheprovider \
+    tests/test_api.py tests/test_chunking.py tests/test_parsers.py \
+    tests/test_providers.py tests/test_section_attribution.py \
+    tests/test_eval_metrics.py tests/test_threshold_experiment.py \
+    tests/test_langfuse.py tests/test_service_ingest.py
+  ```
 
-# 前端 E2E 测试（Playwright）
-cd apps/web
-pnpm test:e2e
-```
+- 前端：生产构建通过；Playwright 4 项通过，但测试使用 mock API，不是浏览器连接真实 Java / RAG 服务的端到端验收。
+
+### Validation boundary
+
+在临时 PostgreSQL/pgvector、FastAPI、Spring Boot 和已安装的本地 Ollama 模型上，用合成 TXT、MD、DOCX、文本层 PDF 验证了上传、切片、向量写入与问答；每种文件生成 1 个切片，问答返回合成标记和来源。修复后，无可提取文本的 PDF 在 `OCR_ENABLED=false` 时会报告 RAG 入库失败，不会再标记为成功任务；同一文档 ID 的旧切片保持不变。
+
+本轮没有验证干净环境首次启动、Docker Compose 全服务启动、OCR 识别、MinIO、浏览器直连真实后端或托管模型；没有下载模型或发送外部模型请求。
 
 ---
 
@@ -185,13 +193,13 @@ pnpm test:e2e
 - ✅ 知识库创建、分享
 - ✅ 文档上传（PDF / DOCX / TXT / MD）
 - ✅ 本地文件存储
-- ✅ OCR 文本提取（需启动 Python OCR 服务）
+- ✅ OCR 服务和 PDF OCR 处理代码已存在；本轮关闭 OCR，实际识别效果未验证
 - ✅ 文档列表、任务状态追踪
 - ✅ RAG 入库（上传后自动调用 FastAPI RAG 服务切片、Embedding、写入 pgvector）
 - ✅ Q&A 问答 JSON 接口（答案、拒答标记、命中数、耗时、Sources）
 - ✅ 前端问答结果展示（答案、来源片段、score、耗时）
 - ⚠️ `.doc` 旧格式暂不进入 RAG 解析；建议使用 `.docx` / `.pdf` / `.txt` / `.md`
-- ⚠️ 真实 Ollama 连通和端到端服务启动验收待后续执行
+- ⚠️ Ollama 与后端 / RAG 的合成资料问答已在隔离环境验证；干净环境首次启动、完整 Compose 和浏览器直连真实服务仍待验收
 
 ---
 

@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.main import app, get_rag_service
+from app.parsers import DocumentParseError
 from app.schemas import (
     IngestResponse,
     QueryResponse,
@@ -36,6 +37,13 @@ class StubRagService:
         )
 
 
+class RejectingRagService(StubRagService):
+    def ingest(self, request):
+        raise DocumentParseError(
+            "No indexable text was extracted from the document. Scanned PDFs may require OCR."
+        )
+
+
 def test_healthz_returns_ok():
     client = TestClient(app)
 
@@ -65,6 +73,29 @@ def test_ingest_endpoint_delegates_to_service():
     assert response.status_code == 200
     assert response.json() == {"documentId": "doc-1", "chunkCount": 2, "provider": "stub"}
     assert service.ingest_requests[0].documentName == "notes.md"
+
+
+def test_ingest_endpoint_returns_unprocessable_when_document_has_no_indexable_text(monkeypatch):
+    monkeypatch.setitem(
+        app.dependency_overrides, get_rag_service, lambda: RejectingRagService()
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/rag/ingest",
+        json={
+            "knowledgeBaseId": "kb-test",
+            "documentId": "doc-test",
+            "documentName": "scan.pdf",
+            "contentType": "application/pdf",
+            "contentBase64": "",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "DOCUMENT_PARSE_FAILED"
+    assert "No indexable text" in response.json()["detail"]["message"]
+    assert "Scanned PDFs may require OCR" in response.json()["detail"]["message"]
 
 
 def test_query_endpoint_returns_answer_sources_and_metrics():

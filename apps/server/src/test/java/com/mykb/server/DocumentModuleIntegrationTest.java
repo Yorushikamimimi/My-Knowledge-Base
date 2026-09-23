@@ -183,7 +183,11 @@ class DocumentModuleIntegrationTest {
         .andExpect(jsonPath("$.data[0].status").value("FAILED"))
         .andExpect(jsonPath("$.data[0].currentStage").value("FAILED"))
         .andExpect(jsonPath("$.data[0].failedStage").value("INDEXING"))
-        .andExpect(jsonPath("$.data[0].failureCode").value("DOCUMENT_RAG_FAILED"));
+        .andExpect(jsonPath("$.data[0].failureCode").value("DOCUMENT_RAG_FAILED"))
+        .andExpect(
+            jsonPath("$.data[0].failureMessage")
+                .value(
+                    "RAG could not parse or extract indexable text; existing indexed chunks were left unchanged."));
   }
 
   @Test
@@ -403,7 +407,8 @@ class DocumentModuleIntegrationTest {
       requests.add(request);
       if (failNext) {
         failNext = false;
-        throw new RagOperationException("RAG service failed");
+        throw new RagOperationException(
+            "RAG could not parse or extract indexable text; existing indexed chunks were left unchanged.");
       }
       return new RagIngestResponse(request.documentId(), 1, "stub");
     }

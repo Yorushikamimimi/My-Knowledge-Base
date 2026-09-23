@@ -1,11 +1,12 @@
 import base64
 import time
+from pathlib import Path
 
 from langfuse import get_client, propagate_attributes
 
 from app.chunking import chunk_text
 from app.config import Settings
-from app.parsers import parse_document
+from app.parsers import DocumentParseError, parse_document
 from app.providers import ModelProvider
 from app.repository import RagRepository
 from app.schemas import IngestRequest, IngestResponse, QueryRequest, QueryResponse, RagSource
@@ -21,6 +22,16 @@ class RagService:
         raw = base64.b64decode(request.contentBase64)
         parsed = parse_document(request.documentName, request.contentType, raw)
         chunks = chunk_text(parsed.text, self.settings.chunk_size, self.settings.chunk_overlap)
+        if not chunks:
+            message = "No indexable text was extracted from the document."
+            content_type = (request.contentType or "").lower()
+            is_text_content = content_type.startswith("text/") or "markdown" in content_type
+            if (
+                Path(request.documentName).suffix.lower() == ".pdf"
+                and not is_text_content
+            ):
+                message += " Scanned PDFs may require OCR."
+            raise DocumentParseError(message)
         embedded_chunks = [
             (chunk.index, chunk.text, self.provider.embed(chunk.text)) for chunk in chunks
         ]
