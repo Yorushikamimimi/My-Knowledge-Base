@@ -480,5 +480,5 @@ Final:             200/40 applied，min_score remains 0.35
 - `apps/server/apps/server/target/test-storage/` 的52个跟踪文件只包含6种 Git blob；逐个对象ID与初始集成测试的6种合成载荷匹配，未打开上传文档正文。路径由 test profile 的相对存储目录与模块工作目录叠加产生；从后续 Git 取消跟踪，本地文件及历史保留。原 `.gitignore` 已覆盖此目录，无须新增重复规则。
 - 新增 `LICENSE` 与 `THIRD_PARTY_NOTICES.md`。MIT只适用于自有代码／说明；第三方依赖、模型、商标及截图中的第三方内容保留原许可，不发布依赖包、模型、JAR或其他安装资产。
 - 验证：在不含 `.env`、真实数据和既有 `node_modules` 的隔离目录，`npm ci --offline --ignore-scripts --no-audit --no-fund` 安装152包成功，`npm run build` 通过（Vite 5.4.21）；RAG现有API测试4/4通过。按文档命令使用随机空闲端口启动FastAPI，健康检查200，`lsof`确认仅回环监听；没有调用真实数据库或模型，临时进程已关闭。首次下载依赖／模型、Java全链路、跨机／完整Compose和浏览器人工验收未覆盖；Java源码未改，本轮未重跑Java测试。
-- 发布检查：本仓库原本Public；仅审查本次新增公开差异，不重新认证既有历史、截图或远端附件。新增文档／许可无真实数据或本机路径，未新增媒体、包或工作流，远端Actions工作流为0。52个测试产物来源已确认；历史仍可访问，未重写。候选增量 READY，准备按既有授权提交并push到 `main`，完成状态以实际Git／远端SHA核验为准。
+- 发布检查：本仓库原本Public；仅审查本次新增公开差异，不重新认证既有历史、截图或远端附件。新增文档／许可无真实数据或本机路径，未新增媒体、包或工作流，远端Actions工作流为0。52个测试产物来源已确认；历史仍可访问，未重写。候选增量 READY；修复提交 `74025d973f94bb1b3d35249fc4acf34c7bc850d8` 已推送至 `origin/main`，GitHub回读确认Public／默认分支main、提交SHA及README／LICENSE／第三方说明与本地一致。未部署；验收仍待主控／本人确认。
 - 接手时已有的README评测段、交接§24与三个评测脚本未并入本次提交，工作区继续保留；本轮尚待主控／本人验收。后续按核验意见恢复，不追加研发功能。
