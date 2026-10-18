@@ -3,10 +3,10 @@
 > **START HERE for any new coding agent.**
 
 ```text
-Last Updated: 2026-08-21
+Last Updated: 2026-10-19
 
 Current Status:
-RAG Advanced Optimization V1 — CLOSED / ACCEPTED
+启动与发布边界维护 — 本轮验证与发布结果见文末 2026-10-19 记录；未部署
 ```
 
 本项目已经完成一轮完整的 RAG 进阶优化并正式收口。接手时**先读本文档**，再按 §21 的 checklist 确认 Git 状态，不要扫描全部历史。
@@ -423,7 +423,7 @@ FastAPI（因 venv shebang 问题优先）：
 
 ```bash
 cd apps/rag
-.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8091
+.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8091
 ```
 
 Spring Boot / React：以 README / 当前脚本为准（`apps/server/target/server-0.1.0-SNAPSHOT.jar`、`apps/web` 的 vite）。不要在 handoff 中编造未经仓库确认的命令。
@@ -471,3 +471,14 @@ Final:             200/40 applied，min_score remains 0.35
 ```
 
 不要写夸大的生产用户量或不存在的数据。
+
+## 2026-10-19 启动与发布边界修复
+
+- 本轮仅修正文档中的默认访问范围、首次安装路径，取消跟踪已确认的测试输出，补充自有代码 MIT 与第三方许可边界；未修改检索参数、业务认证流程、模型或既有数据库，未部署。
+- 本机 FastAPI 统一监听 `127.0.0.1:8091`，明确它没有独立用户／知识库认证；Java 默认仍从回环调用。跨机／跨容器必须另配内部隔离与服务认证，不能直接发布 RAG 端口。历史 Compose 未提供完整 RAG 链路，未将其冒称一键启动方案。
+- README 精简为首次使用入口，详细命令集中到 `docs/STARTUP.md`。每个终端工作目录明确，前端统一 `npm ci` → `npm run dev`，使用现有 npm 锁文件；无须安装 pnpm。历史 shebang 问题通过 `python -m pip/uvicorn` 避免。
+- `apps/server/apps/server/target/test-storage/` 的52个跟踪文件只包含6种 Git blob；逐个对象ID与初始集成测试的6种合成载荷匹配，未打开上传文档正文。路径由 test profile 的相对存储目录与模块工作目录叠加产生；从后续 Git 取消跟踪，本地文件及历史保留。原 `.gitignore` 已覆盖此目录，无须新增重复规则。
+- 新增 `LICENSE` 与 `THIRD_PARTY_NOTICES.md`。MIT只适用于自有代码／说明；第三方依赖、模型、商标及截图中的第三方内容保留原许可，不发布依赖包、模型、JAR或其他安装资产。
+- 验证：在不含 `.env`、真实数据和既有 `node_modules` 的隔离目录，`npm ci --offline --ignore-scripts --no-audit --no-fund` 安装152包成功，`npm run build` 通过（Vite 5.4.21）；RAG现有API测试4/4通过。按文档命令使用随机空闲端口启动FastAPI，健康检查200，`lsof`确认仅回环监听；没有调用真实数据库或模型，临时进程已关闭。首次下载依赖／模型、Java全链路、跨机／完整Compose和浏览器人工验收未覆盖；Java源码未改，本轮未重跑Java测试。
+- 发布检查：本仓库原本Public；仅审查本次新增公开差异，不重新认证既有历史、截图或远端附件。新增文档／许可无真实数据或本机路径，未新增媒体、包或工作流，远端Actions工作流为0。52个测试产物来源已确认；历史仍可访问，未重写。候选增量 READY，准备按既有授权提交并push到 `main`，完成状态以实际Git／远端SHA核验为准。
+- 接手时已有的README评测段、交接§24与三个评测脚本未并入本次提交，工作区继续保留；本轮尚待主控／本人验收。后续按核验意见恢复，不追加研发功能。

@@ -81,78 +81,12 @@
 
 ## 本地启动
 
-本仓库采用 `Hybrid Dev`（混合开发，中文解释：前后端本地跑，基础依赖可本地或容器化）的方式。
+先准备 Docker、JDK 17 或 21、Maven、Python 3.12、Node.js 24（含 npm）和 Ollama。
+完整的首次安装、模型准备、各终端工作目录及停止方式见 [启动指南](docs/STARTUP.md#第一次启动)；前端在 `apps/web` 中先运行 `npm ci`，再运行 `npm run dev -- --host 127.0.0.1 --port 3001`。
 
-### 启动顺序
+默认只用于本机：浏览器打开 `http://localhost:3001`，通过 Java API 使用知识库。**FastAPI RAG 是后端内部服务，未实现用户认证或知识库权限校验**，启动时必须绑定 `127.0.0.1:8091`；不能直接向局域网或公网发布、转发 RAG 端口。回环绑定不是认证，同一主机上的其他程序仍可访问。
 
-1. 启动基础依赖：
-
-```bash
-docker start mykb-pg
-docker start redis-local
-```
-
-如果本机还没有容器，参考 [STARTUP.md](docs/STARTUP.md) 创建 `mykb-pg` 和 `redis-local`。
-
-2. 准备本地模型：
-
-```bash
-ollama pull nomic-embed-text
-ollama pull qwen2.5:7b
-```
-
-> 本轮实际联调的范围与限制见 [启动文档中的验证边界](docs/STARTUP.md#validation-boundary)；上述命令尚未作为干净环境首次启动流程整体验收。
-
-3. 启动 Python RAG 服务：
-
-```bash
-cd apps/rag
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-
-PYTHONPATH=. \
-RAG_DATABASE_URL=postgresql://mykb:mykb@127.0.0.1:5432/mykb \
-.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8091
-```
-
-4. 编译并启动后端：
-
-```bash
-cd apps/server
-mvn package -DskipTests -q
-
-cd ../..
-env \
-  DB_HOST=127.0.0.1 DB_PORT=5432 DB_NAME=mykb DB_USERNAME=mykb DB_PASSWORD=mykb \
-  APP_JWT_SECRET=this-is-a-very-long-secret-key-for-local-development-min-32-bytes \
-  APP_ALLOWED_ORIGINS=http://localhost:3001 \
-  APP_STORAGE_TYPE=LOCAL \
-  RAG_BASE_URL=http://127.0.0.1:8091 \
-  OCR_ENABLED=false \
-  java -jar apps/server/target/server-0.1.0-SNAPSHOT.jar
-```
-
-5. 启动前端：
-
-```bash
-cd apps/web
-./node_modules/.bin/vite --host 0.0.0.0 --port 3001
-```
-
-6. 打开页面：
-
-- 前端：`http://localhost:3001`
-- 后端健康检查：`http://127.0.0.1:8081/actuator/health`
-- RAG 健康检查：`http://127.0.0.1:8091/healthz`
-
-### 关闭顺序
-
-1. 关闭后端 `java -jar` 窗口：按 `Ctrl + C`
-2. 关闭前端 Vite 窗口：按 `Ctrl + C`
-3. 如需停止依赖容器：`docker stop mykb-pg redis-local`
-
-完整说明见：
-- [STARTUP.md](docs/STARTUP.md)
+Java 与 RAG 分机或分容器时，先按[访问边界说明](docs/STARTUP.md#rag-访问边界与跨机部署)配置专用内部网络与服务认证，不能仅把监听地址改为 `0.0.0.0`。仓库历史 Compose 不含完整 RAG 链路，尚不能当作一键启动方案。
 
 ## 验证范围（2026-09-23）
 
@@ -193,3 +127,7 @@ cd apps/web
 - 在干净环境按首次启动指南复验依赖和服务顺序；本轮完成的是隔离环境下的真实后端 / RAG / 本地模型联调，浏览器测试仍使用 mock API
 - 刷新本地 RAG 问答截图和演示数据
 - 执行 `Linux` 宿主机部署演练
+
+## 许可证
+
+本项目自有代码与自有说明采用 [MIT](LICENSE)。第三方依赖、模型、商标和截图中的第三方内容不因本仓库的 MIT 声明而改变原许可，见[第三方说明](THIRD_PARTY_NOTICES.md)。

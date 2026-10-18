@@ -13,10 +13,12 @@ upload, ingestion tracking, and streaming QA.
 
 ## Local Run
 
-```powershell
-cd apps\web
-npm install
-npm run dev -- --host 0.0.0.0 --port 3001
+从仓库根目录开始（新终端），先安装锁定依赖，再启动本机开发服务：
+
+```bash
+cd apps/web
+npm ci
+npm run dev -- --host 127.0.0.1 --port 3001
 ```
 
 ## Verification
@@ -29,3 +31,5 @@ npm run dev -- --host 0.0.0.0 --port 3001
 
 - frontend reads backend base URL from `VITE_API_BASE_URL`
 - default local frontend port: `3001`
+
+完整依赖、后端/RAG启动顺序及内部服务边界见 [启动指南](../../docs/STARTUP.md)。无需 pnpm；不要直接运行尚未安装的 `node_modules` 中的文件。

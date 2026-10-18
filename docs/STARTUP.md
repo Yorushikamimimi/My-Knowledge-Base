@@ -1,6 +1,6 @@
 # 启动文档
 
-本文给出预期的本地启动步骤。2026-09-23 的隔离联调结果和未覆盖范围见文末；不能据此认定已在干净机器上按本指南完整启动。
+本文给出本机开发的启动步骤。每个标注“新终端”的代码块都从仓库根目录开始，先用 `cd /path/to/My-Knowledge-Base` 切换（替换为自己的克隆路径），不要承接上一个终端的目录。2026-09-23 的隔离联调结果和未覆盖范围见文末；不能据此认定已在干净机器上按本指南完整启动。
 
 ## 项目简介
 
@@ -10,9 +10,9 @@
 
 | 模块 | 语言 | 框架 |
 |------|------|------|
-| 后端 | Java 21 | Spring Boot 3.3 + JPA + Flyway |
+| 后端 | Java 17（POM 编译目标；也可用 JDK 21 构建） | Spring Boot 3.3 + JPA + Flyway |
 | RAG 服务 | Python 3.12 | FastAPI + pgvector + Ollama |
-| 前端 | JavaScript (React) | React 18 + Vite 5 + Tailwind CSS |
+| 前端 | JavaScript (React) | React 18 + Vite 5 |
 | 数据库 | PostgreSQL 16 | Docker (pgvector 镜像) |
 | OCR 服务 | Python 3.12 | FastAPI + RapidOCR（可选） |
 
@@ -20,9 +20,9 @@
 
 ## 前置条件
 
-- Docker Desktop（已安装）
-- Java 21（`java -version`）
-- Node.js 24（`node -v`）
+- Docker Desktop／Docker Engine（自行安装；首次运行前确认可用）
+- JDK 17 或 21（`java -version`；POM 的编译目标为 Java 17）
+- Node.js 24 及随附的 npm（`node -v`、`npm -v`；本指南使用仓库的 `apps/web/package-lock.json`，无需 pnpm）
 - Maven（`mvn -v`）
 - Python 3.12（`python3 --version`）
 - Ollama（本地模型服务，后续联调时需要）
@@ -33,6 +33,8 @@
 
 ### 1. 启动依赖服务（Docker）
 
+新终端，从仓库根目录执行。仅首次创建自己的开发容器；如已有同名容器或端口被占用，先核对归属，不删除或停止其他项目的容器。下列数据库账号密码仅为本机虚构示例，不能用于共享或生产环境。
+
 ```bash
 # PostgreSQL
 docker run -d \
@@ -40,24 +42,19 @@ docker run -d \
   -e POSTGRES_DB=mykb \
   -e POSTGRES_USER=mykb \
   -e POSTGRES_PASSWORD=mykb \
-  -p 5432:5432 \
+  -p 127.0.0.1:5432:5432 \
   pgvector/pgvector:pg16
 
-# Redis（项目暂时没用到，但有容器在跑）
-docker start redis-local
+# 当前 RAG 问答链路不依赖 Redis，不需要为本流程启动它。
 ```
 
 ### 2. 配置环境变量
 
-项目根目录已有 `.env.example`，复制一份：
-
-```bash
-cp .env.example .env
-```
-
-默认值可以直接用，不需要改。如果 PostgreSQL 端口或密码不同，修改 `.env` 里的对应项。
+下文为每个服务显式传入本机示例配置，不要求读取或覆盖已有 `.env`。数据库名称、端口、账号等改动时，同步调整 Java 与 RAG 的对应变量。Java 的 JWT 密钥请自行设置为至少32字节的随机值；示例值只用于本机开发，不能作为生产密钥。
 
 ### 3. 准备 Ollama 模型
+
+在新终端执行；这两条命令会下载模型，需要本机 Ollama 已启动。
 
 ```bash
 ollama pull nomic-embed-text
@@ -73,60 +70,72 @@ ollama pull qwen2.5:7b
 
 ### 4. 启动 RAG 服务
 
+新终端，从仓库根目录进入 `apps/rag`，保持该终端运行。默认关闭外部 tracing；后续如主动配置 Langfuse，先确认测试资料可以发送到对应服务。
+
 ```bash
 cd apps/rag
 python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
+.venv/bin/python -m pip install -r requirements.txt
 
 PYTHONPATH=. \
 RAG_DATABASE_URL=postgresql://mykb:mykb@127.0.0.1:5432/mykb \
-.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8091
+LANGFUSE_TRACING_ENABLED=false \
+.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8091
 ```
 
 健康检查：
 
 ```bash
-curl http://localhost:8091/healthz
+curl http://127.0.0.1:8091/healthz
 ```
 
 ### 5. 编译后端
 
+新终端，从仓库根目录进入 `apps/server`；编译完成后回到根目录。
+
 ```bash
 cd apps/server
 mvn package -DskipTests -q
+cd ../..
 ```
 
 编译产物：`apps/server/target/server-0.1.0-SNAPSHOT.jar`
 
 ### 6. 启动后端
 
+从仓库根目录执行并保持前台运行；如在新终端中，先切回该目录。
+
 ```bash
 cd /path/to/My-Knowledge-Base  # 替换为本地克隆路径
 
 env \
+  SERVER_ADDRESS=127.0.0.1 \
   DB_HOST=127.0.0.1 DB_PORT=5432 DB_NAME=mykb DB_USERNAME=mykb DB_PASSWORD=mykb \
   APP_JWT_SECRET=this-is-a-very-long-secret-key-for-local-development-min-32-bytes \
   APP_ALLOWED_ORIGINS=http://localhost:3001 \
   APP_STORAGE_TYPE=LOCAL \
   RAG_BASE_URL=http://127.0.0.1:8091 \
   OCR_ENABLED=false \
-  nohup java -jar apps/server/target/server-0.1.0-SNAPSHOT.jar \
-  > .runtime/server.log 2>&1 &
+  java -jar apps/server/target/server-0.1.0-SNAPSHOT.jar
 ```
 
 验证：`curl http://localhost:8081/actuator/health` → 返回 `{"status":"UP"}`
 
-### 7. 启动前端
+### 7. 安装并启动前端
+
+新终端，从仓库根目录进入 `apps/web`。首次克隆或锁文件变化后先 `npm ci`；它按锁文件安装到当前目录的 `node_modules`。
 
 ```bash
 cd apps/web
-pnpm install
-npx vite --port 3001
+npm ci
+npm run dev -- --host 127.0.0.1 --port 3001
 ```
 
 浏览器打开 `http://localhost:3001`
 
 ### 8. 创建测试账号
+
+也可通过登录页注册新账号。下列 SQL 仅用于自己新建的本机开发库；不要对既有资料库或生产库执行，不需要将账号信息提交到 Git。
 
 直接插数据库（DBeaver 连 `127.0.0.1:5432`，库 `mykb`，用户/密码 `mykb`）：
 
@@ -150,7 +159,7 @@ VALUES (
 
 ## 日常启动（服务已经在跑）
 
-通常 Docker 容器和项目服务都在后台运行。检查状态：
+服务不会因克隆仓库自动启动。仅检查你本轮启动的服务：
 
 ```bash
 # 检查服务端口
@@ -158,8 +167,18 @@ curl -s http://localhost:8081/actuator/health   # 后端
 curl -s http://localhost:8091/healthz            # RAG 服务
 curl -s -o /dev/null -w "%{http_code}" http://localhost:3001  # 前端
 docker exec mykb-pg pg_isready -U mykb           # 数据库
-docker exec redis-local redis-cli -a local_dev_only ping  # Redis
 ```
+
+---
+
+## RAG 访问边界与跨机部署
+
+- FastAPI `/api/v1/rag/ingest` 与 `/api/v1/rag/query` 不验证登录用户或知识库权限；这些检查属于 Java API 层。RAG 不应成为浏览器或第三方客户端的公开入口，CORS 也不能替代服务认证。
+- 默认 Java 与 RAG 在同一台主机运行：RAG 只监听 `127.0.0.1:8091`，Java 的 `RAG_BASE_URL` 指向该地址。不要将8091加入公网代理、路由器转发或公开容器端口映射。同机不可信进程仍能访问回环端口，本方案不提供主机内多租户隔离。
+- 分机时，`127.0.0.1` 只代表调用者本机；分容器时则只代表各自容器。不得为了“连通”直接把无认证的 RAG 监听改为公网可达的 `0.0.0.0`。需使用专用内部网络／防火墙只允许业务后端访问，并在接收侧配置可验证的服务身份（如带认证的内部反向代理或 mTLS），再设置相应 `RAG_BASE_URL`。当前代码没有自动提供这套跨机认证，本文未将其标为已实现或已验证。
+- `deploy/docker-compose.yml` 是历史 Java／OCR 与基础设施入口，未定义 RAG 服务、仍有旧 Dify 配置；虽然其宿主机端口已绑定回环，也不能据此认定完整 RAG 部署可用。本文不自动修改或启动既有容器，完整 Compose 和跨机部署仍待单独配置、验证。
+
+停止时，在你启动的 RAG、Java、Vite 终端分别按 `Ctrl+C`。仅在不再需要时停止自己创建的 `mykb-pg`；不按端口或进程名批量结束其他项目。
 
 ---
 

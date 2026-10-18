@@ -13,7 +13,7 @@ if ($Target -eq "server") {
 
 Push-Location (Join-Path $repoRoot "apps/web")
 try {
-    npm run dev -- --host 0.0.0.0 --port 3001
+    npm run dev -- --host 127.0.0.1 --port 3001
     exit $LASTEXITCODE
 } finally {
     Pop-Location
